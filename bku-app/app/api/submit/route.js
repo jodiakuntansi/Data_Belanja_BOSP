@@ -1,0 +1,46 @@
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "../../../lib/supabaseAdmin";
+
+export async function POST(req) {
+  const body = await req.json();
+  const { npsn, pin, tahun, bulan, totals, rincian, integrityOk, fileName } = body;
+
+  if (!npsn || !pin || !tahun || !bulan || !totals) {
+    return NextResponse.json({ error: "Data tidak lengkap." }, { status: 400 });
+  }
+
+  const supabase = supabaseAdmin();
+
+  // Re-verify PIN server-side on every write — the client-side "session"
+  // is just UI convenience, never trusted for authorization.
+  const { data: sekolah, error: sekolahErr } = await supabase
+    .from("sekolah")
+    .select("npsn, nama, jenjang, pin")
+    .eq("npsn", npsn)
+    .maybeSingle();
+
+  if (sekolahErr) return NextResponse.json({ error: sekolahErr.message }, { status: 500 });
+  if (!sekolah || String(sekolah.pin) !== String(pin)) {
+    return NextResponse.json({ error: "NPSN atau PIN salah." }, { status: 401 });
+  }
+
+  const { error: upsertErr } = await supabase.from("submissions").upsert(
+    {
+      npsn,
+      nama_sekolah: sekolah.nama,
+      jenjang: sekolah.jenjang,
+      tahun,
+      bulan,
+      totals,
+      rincian,
+      integrity_ok: !!integrityOk,
+      file_name: fileName || null,
+      submitted_at: new Date().toISOString(),
+    },
+    { onConflict: "npsn,tahun,bulan" }
+  );
+
+  if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
+}
