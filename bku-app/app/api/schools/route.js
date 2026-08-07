@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
+// Without this, Next.js treats this route as static (since it reads no
+// request data) and caches its response at BUILD time — which would
+// permanently bake in an empty roster from before any schools existed.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const supabase = supabaseAdmin();
   const { data, error } = await supabase
