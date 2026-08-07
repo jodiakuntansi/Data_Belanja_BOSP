@@ -27,6 +27,60 @@ function Stamp({ ok }) {
   );
 }
 
+function SchoolCombobox({ schools, npsn, onSelect }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const selected = schools.find((s) => s.npsn === npsn);
+  const filtered = schools.filter((s) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return s.nama.toLowerCase().includes(q) || s.npsn.includes(q);
+  });
+
+  return (
+    <div className="relative mb-4">
+      <input
+        type="text"
+        value={open ? query : selected ? `${selected.nama} (${selected.jenjang})` : query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onSelect("");
+        }}
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Ketik nama sekolah..."
+        autoComplete="off"
+        className="w-full border border-border rounded-md px-3 py-2 text-sm bg-white"
+      />
+      {open && (
+        <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-border rounded-md shadow-lg">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-inksoft">Tidak ditemukan.</div>
+          ) : (
+            filtered.map((s) => (
+              <div
+                key={s.npsn}
+                onMouseDown={() => {
+                  onSelect(s.npsn);
+                  setQuery("");
+                  setOpen(false);
+                }}
+                className="px-3 py-2 text-sm cursor-pointer hover:bg-paper text-ink"
+              >
+                {s.nama} <span className="text-inksoft text-xs">({s.jenjang})</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LoginForm({ onLogin }) {
   const [schools, setSchools] = useState([]);
   const [npsn, setNpsn] = useState("");
@@ -44,6 +98,10 @@ function LoginForm({ onLogin }) {
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    if (!npsn) {
+      setError("Pilih sekolah dari daftar terlebih dahulu.");
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/login", {
@@ -67,22 +125,10 @@ function LoginForm({ onLogin }) {
     <main className="min-h-screen flex items-center justify-center p-6">
       <form onSubmit={submit} className="max-w-sm w-full bg-card border border-border rounded-lg p-6">
         <h1 className="font-serif text-lg font-bold text-ink mb-1">Login bendahara</h1>
-        <p className="text-sm text-inksoft mb-5">Pilih sekolah dan masukkan PIN yang diberikan dinas.</p>
+        <p className="text-sm text-inksoft mb-5">Cari sekolah dan masukkan PIN yang diberikan dinas.</p>
 
         <label className="text-xs text-inksoft block mb-1">Sekolah</label>
-        <select
-          value={npsn}
-          onChange={(e) => setNpsn(e.target.value)}
-          required
-          className="w-full mb-4 border border-border rounded-md px-3 py-2 text-sm bg-white"
-        >
-          <option value="">— pilih sekolah —</option>
-          {schools.map((s) => (
-            <option key={s.npsn} value={s.npsn}>
-              {s.nama} ({s.jenjang})
-            </option>
-          ))}
-        </select>
+        <SchoolCombobox schools={schools} npsn={npsn} onSelect={setNpsn} />
 
         <label className="text-xs text-inksoft block mb-1">PIN</label>
         <input
