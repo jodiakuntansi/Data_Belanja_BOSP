@@ -10,6 +10,81 @@ const CATEGORY_TW = {
   tak_terklasifikasi: "text-red",
 };
 const JENJANG_ORDER = ["TK/PAUD", "SD", "SMP"];
+const BULAN_ORDER = {
+  JANUARI: 1, FEBRUARI: 2, MARET: 3, APRIL: 4, MEI: 5, JUNI: 6,
+  JULI: 7, AGUSTUS: 8, SEPTEMBER: 9, OKTOBER: 10, NOVEMBER: 11, DESEMBER: 12,
+};
+
+// Period values are encoded as strings so a single <select> can offer
+// individual months, semesters, or a full year:
+//   "month:2026:MARET"   -> just that month
+//   "semester:2026:1"    -> Jan-Jun 2026
+//   "semester:2026:2"    -> Jul-Des 2026
+//   "year:2026"          -> the whole year
+function parsePeriod(value) {
+  if (!value) return null;
+  const [type, tahun, extra] = value.split(":");
+  if (type === "month") return { type, tahun, bulanSet: new Set([extra]) };
+  if (type === "semester") {
+    const months = Object.keys(BULAN_ORDER).filter((b) =>
+      extra === "1" ? BULAN_ORDER[b] <= 6 : BULAN_ORDER[b] >= 7
+    );
+    return { type, tahun, bulanSet: new Set(months) };
+  }
+  if (type === "year") return { type, tahun, bulanSet: new Set(Object.keys(BULAN_ORDER)) };
+  return null;
+}
+
+function periodLabel(value) {
+  const [type, tahun, extra] = value.split(":");
+  if (type === "month") return `${extra} ${tahun}`;
+  if (type === "semester") return `Semester ${extra} ${tahun} (${extra === "1" ? "Jan–Jun" : "Jul–Des"})`;
+  if (type === "year") return `Tahunan ${tahun}`;
+  return value;
+}
+
+// Combine multiple monthly submissions from the same school (relevant
+// for semester/tahunan views) into one row: totals summed, rincian
+// merged per kode rekening.
+function aggregateByNpsn(subs) {
+  const map = {};
+  for (const s of subs) {
+    if (!map[s.npsn]) {
+      map[s.npsn] = {
+        npsn: s.npsn,
+        nama_sekolah: s.nama_sekolah,
+        jenjang: s.jenjang,
+        totals: { totalModal: 0, totalBarangJasa: 0 },
+        rincianMap: {},
+        integrity_ok: true,
+        submitted_at: s.submitted_at,
+        bulanList: [],
+        file_names: [],
+      };
+    }
+    const a = map[s.npsn];
+    a.totals.totalModal += s.totals?.totalModal || 0;
+    a.totals.totalBarangJasa += s.totals?.totalBarangJasa || 0;
+    a.integrity_ok = a.integrity_ok && !!s.integrity_ok;
+    if (new Date(s.submitted_at) > new Date(a.submitted_at)) a.submitted_at = s.submitted_at;
+    a.bulanList.push(s.bulan);
+    if (s.file_name) a.file_names.push(s.file_name);
+    for (const g of s.rincian || []) {
+      if (!a.rincianMap[g.kode]) {
+        a.rincianMap[g.kode] = { kode: g.kode, kategori: g.kategori, uraian: g.uraian, total: 0, jumlahTransaksi: 0 };
+      }
+      a.rincianMap[g.kode].total += g.total;
+      a.rincianMap[g.kode].jumlahTransaksi += g.jumlahTransaksi;
+    }
+  }
+  return Object.values(map)
+    .map((a) => ({
+      ...a,
+      rincian: Object.values(a.rincianMap).sort((x, y) => y.total - x.total),
+      bulanList: a.bulanList.sort((x, y) => (BULAN_ORDER[x] || 99) - (BULAN_ORDER[y] || 99)),
+    }))
+    .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""));
+}
 
 function fmtRp(n) {
   return "Rp " + Math.round(n || 0).toLocaleString("id-ID");
@@ -99,14 +174,27 @@ function Dashboard({ password, onLogout }) {
     load();
   }, [load]);
 
-  const periods = Array.from(new Set(submissions.map((s) => `${s.tahun}-${s.bulan}`))).sort().reverse();
-  const activePeriod = filterPeriod || periods[0] || "";
+  const tahunList = Array.from(new Set(submissions.map((s) => s.tahun))).sort().reverse();
+  const periodOptions = [];
+  for (const tahun of tahunList) {
+    const bulanSet = new Set(submissions.filter((s) => s.tahun === tahun).map((s) => s.bulan));
+    const bulanDesc = Array.from(bulanSet).sort((a, b) => (BULAN_ORDER[b] || 0) - (BULAN_ORDER[a] || 0));
+    for (const bulan of bulanDesc) periodOptions.push(`month:${tahun}:${bulan}`);
+    const hasSem1 = bulanDesc.some((b) => BULAN_ORDER[b] <= 6);
+    const hasSem2 = bulanDesc.some((b) => BULAN_ORDER[b] >= 7);
+    if (hasSem1) periodOptions.push(`semester:${tahun}:1`);
+    if (hasSem2) periodOptions.push(`semester:${tahun}:2`);
+    if (bulanDesc.length > 0) periodOptions.push(`year:${tahun}`);
+  }
+  const activePeriod = filterPeriod || periodOptions[0] || "";
+  const period = parsePeriod(activePeriod);
 
-  const filtered = submissions.filter((s) => {
-    if (activePeriod && `${s.tahun}-${s.bulan}` !== activePeriod) return false;
+  const rawFiltered = submissions.filter((s) => {
+    if (period && (s.tahun !== period.tahun || !period.bulanSet.has(s.bulan))) return false;
     if (search && !`${s.nama_sekolah} ${s.npsn}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+  const filtered = aggregateByNpsn(rawFiltered);
 
   const totalModal = filtered.reduce((s, x) => s + (x.totals?.totalModal || 0), 0);
   const totalBarangJasa = filtered.reduce((s, x) => s + (x.totals?.totalBarangJasa || 0), 0);
@@ -187,11 +275,10 @@ function Dashboard({ password, onLogout }) {
             onChange={(e) => setFilterPeriod(e.target.value)}
             className="border border-border rounded-md px-3 py-2 text-sm bg-white"
           >
-            {periods.length === 0 && <option value="">Belum ada data</option>}
-            {periods.map((p) => {
-              const [t, b] = p.split("-");
-              return <option key={p} value={p}>{b} {t}</option>;
-            })}
+            {periodOptions.length === 0 && <option value="">Belum ada data</option>}
+            {periodOptions.map((p) => (
+              <option key={p} value={p}>{periodLabel(p)}</option>
+            ))}
           </select>
           <input
             placeholder="Cari nama sekolah / NPSN"
@@ -305,7 +392,7 @@ function Dashboard({ password, onLogout }) {
                                   <div className="mt-0.5">{g.uraian || "Uraian tidak ditemukan"}</div>
                                 </div>
                               ))}
-                              <div className="mt-2">Dikirim {new Date(s.submitted_at).toLocaleString("id-ID")} · file: {s.file_name}</div>
+                              <div className="mt-2">Bulan: {(s.bulanList || []).join(", ")} · terakhir dikirim {new Date(s.submitted_at).toLocaleString("id-ID")}</div>
                             </div>
                           )}
                         </div>
