@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import Link from "next/link";
-import { parseBKU, CATEGORY_LABEL } from "../../lib/parseBKU";
+import { parseBKU, parseBKUFromPDF, CATEGORY_LABEL } from "../../lib/parseBKU";
 
 const CATEGORY_TW = {
   modal: "text-gold",
@@ -173,11 +173,28 @@ function UploadFlow({ sekolah, onLogout }) {
     setSaveError("");
     setParsing(true);
     try {
-      const buf = await f.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array", cellDates: true });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-      setParsed(parseBKU(rows));
+      const isPdf = f.name.toLowerCase().endsWith(".pdf");
+      if (isPdf) {
+        const buf = await f.arrayBuffer();
+        const base64 = btoa(new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), ""));
+        const res = await fetch("/api/parse-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file: base64 }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setParsed({ errors: ["Gagal membaca PDF: " + (data.error || "tidak diketahui")], ok: false, totals: null, rincian: [] });
+        } else {
+          setParsed(parseBKUFromPDF(data));
+        }
+      } else {
+        const buf = await f.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array", cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        setParsed(parseBKU(rows));
+      }
     } catch (e) {
       setParsed({ errors: ["Gagal membaca file: " + e.message], ok: false, totals: null, rincian: [] });
     }
@@ -229,12 +246,12 @@ function UploadFlow({ sekolah, onLogout }) {
           <div className="font-serif font-bold text-ink mb-3">Unggah Buku Kas Umum (BKU)</div>
           <label className="flex items-center gap-3 border-2 border-dashed border-border rounded-lg p-4 cursor-pointer bg-[#FFFCF3]">
             <div>
-              <div className="text-sm font-semibold text-ink">{fileName || "Klik untuk pilih file BKU (.xlsx)"}</div>
-              <div className="text-xs text-inksoft">Format Excel BKU bulanan standar BOSP</div>
+              <div className="text-sm font-semibold text-ink">{fileName || "Klik untuk pilih file BKU (.xlsx atau .pdf)"}</div>
+              <div className="text-xs text-inksoft">Format Excel atau PDF dari ARKAS, BKU bulanan standar BOSP</div>
             </div>
             <input
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx,.xls,.pdf"
               className="hidden"
               onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])}
             />

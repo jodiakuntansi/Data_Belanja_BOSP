@@ -69,7 +69,7 @@ function findHeaderInfo(rows) {
     const rowCols = {};
     let hits = 0;
     for (let c = 0; c < r.length; c++) {
-      const label = cellStr(r[c]).trim().toUpperCase();
+      const label = cellStr(r[c]).trim().toUpperCase().replace(/\s+/g, " ");
       if (HEADER_LABEL_MAP[label]) {
         rowCols[HEADER_LABEL_MAP[label]] = c;
         hits++;
@@ -84,8 +84,61 @@ function findHeaderInfo(rows) {
   return { headerIdx, cols };
 }
 
+// Excel gives us real Date objects and numeric cells. PDF-sourced rows
+// (extracted server-side, see parsePDFRows below) only have plain text,
+// so these helpers accept either.
+function parseTanggalCell(v) {
+  if (v instanceof Date) return v;
+  if (typeof v === "string") {
+    const m = v.trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  }
+  return null;
+}
+function parseAngka(v) {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const cleaned = v.trim().replace(/\./g, "").replace(",", ".");
+    if (!cleaned) return 0;
+    const n = Number(cleaned);
+    return isNaN(n) ? 0 : n;
+  }
+  return 0;
+}
+
 export function parseBKU(rows) {
-  const errors = [];
+  const header = extractHeaderInfo(rows);
+  const table = parseTable(rows);
+  return buildResult(header, table);
+}
+
+// Used for the PDF path: header info comes pre-extracted from the server
+// (see app/api/parse-pdf/route.js), only the transaction table itself
+// needs the shared row-parsing logic below.
+export function parseBKUFromPDF({ npsn, namaSekolah, alamat, bulan, tahun, rows }) {
+  const header = { npsn: npsn || "", namaSekolah: namaSekolah || "", alamat: alamat || "", bulan: bulan || "", tahun: tahun || "" };
+  const table = parseTable(rows);
+  return buildResult(header, table);
+}
+
+function buildResult(header, table) {
+  const errors = [...table.errors];
+  if (!header.npsn) errors.unshift("NPSN tidak ditemukan di file — periksa apakah format file sesuai template BKU standar.");
+  if (!header.namaSekolah) errors.unshift("Nama sekolah tidak ditemukan di file.");
+  if (!header.bulan || !header.tahun) errors.unshift("Bulan/tahun tidak terbaca dari judul file.");
+
+  return {
+    ...header,
+    transaksi: table.transaksi,
+    rincian: table.rincian,
+    totals: table.totals,
+    integrityOk: table.integrityOk,
+    errors,
+    ok: errors.length === 0,
+  };
+}
+
+function extractHeaderInfo(rows) {
   let npsn = "";
   let namaSekolah = "";
   let alamat = "";
@@ -188,10 +241,11 @@ export function parseBKU(rows) {
     }
   }
 
-  if (!npsn) errors.push("NPSN tidak ditemukan di file — periksa apakah format file sesuai template BKU standar.");
-  if (!namaSekolah) errors.push("Nama sekolah tidak ditemukan di file.");
-  if (!bulan || !tahun) errors.push("Bulan/tahun tidak terbaca dari judul file.");
+  return { npsn, namaSekolah, alamat, bulan, tahun };
+}
 
+function parseTable(rows) {
+  const errors = [];
   const { headerIdx, cols } = findHeaderInfo(rows);
   if (
     headerIdx === -1 ||
@@ -201,7 +255,7 @@ export function parseBKU(rows) {
     cols.pengeluaran === undefined
   ) {
     errors.push("Baris header tabel (TANGGAL / KODE REKENING / URAIAN) tidak ditemukan atau tidak lengkap. File mungkin bukan format BKU standar.");
-    return { npsn, namaSekolah, alamat, bulan, tahun, transaksi: [], rincian: [], totals: null, errors, ok: false };
+    return { transaksi: [], rincian: [], totals: null, integrityOk: false, errors };
   }
 
   const transaksi = [];
@@ -210,17 +264,18 @@ export function parseBKU(rows) {
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i] || [];
     const colA = r[cols.tanggal];
-    if (colA instanceof Date) {
+    const tanggalDate = parseTanggalCell(colA);
+    if (tanggalDate) {
       const kodeRaw = cellStr(r[cols.kodeRekening]);
       const kodeParts = kodeRaw.split("\n").map((p) => p.trim()).filter(Boolean);
       const kodeUtama = kodeParts.length > 1 ? kodeParts[0] + kodeParts[1] : kodeParts[0] || "";
       const uraian = cellStr(r[cols.uraian]).trim();
-      const penerimaan = Number(r[cols.penerimaan]) || 0;
-      const pengeluaran = Number(r[cols.pengeluaran]) || 0;
+      const penerimaan = parseAngka(r[cols.penerimaan]);
+      const pengeluaran = parseAngka(r[cols.pengeluaran]);
       const excluded = isSiplahPassthrough(uraian) || !kodeUtama;
       const kategori = excluded ? null : classifyKode(kodeUtama);
       transaksi.push({
-        tanggal: colA,
+        tanggal: tanggalDate,
         kodeKegiatan: cellStr(r[cols.kodeKegiatan]).trim(),
         kodeRekening: kodeUtama,
         noBukti: cellStr(r[cols.noBukti]).trim(),
@@ -238,9 +293,9 @@ export function parseBKU(rows) {
     } else {
       const jumlahCellRaw = r.find((v) => /^Jumlah\b/i.test(cellStr(v).trim()));
       if (jumlahCellRaw !== undefined) {
-        let penerimaan = Number(r[cols.penerimaan]) || 0;
-        let pengeluaran = Number(r[cols.pengeluaran]) || 0;
-        let saldo = Number(r[cols.saldo]) || 0;
+        let penerimaan = parseAngka(r[cols.penerimaan]);
+        let pengeluaran = parseAngka(r[cols.pengeluaran]);
+        let saldo = parseAngka(r[cols.saldo]);
         if (!penerimaan && !pengeluaran && !saldo) {
           const nums = cellStr(jumlahCellRaw).match(/\d{1,3}(?:\.\d{3})+/g);
           if (nums && nums.length >= 3) {
@@ -290,11 +345,6 @@ export function parseBKU(rows) {
     .reduce((s, t) => s + t.pengeluaran, 0);
 
   return {
-    npsn,
-    namaSekolah,
-    alamat,
-    bulan,
-    tahun,
     transaksi,
     rincian,
     totals: {
@@ -311,6 +361,5 @@ export function parseBKU(rows) {
     },
     integrityOk,
     errors,
-    ok: errors.length === 0,
   };
 }
