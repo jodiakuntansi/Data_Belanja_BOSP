@@ -2,8 +2,6 @@ name: Keep Supabase Awake
 
 on:
   schedule:
-    # Runs every 3 days at 03:00 UTC — comfortably inside Supabase's
-    # 7-day auto-pause window, with margin in case a run gets skipped.
     - cron: "0 3 */3 * *"
   workflow_dispatch: {}
 
@@ -12,4 +10,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping the app (this queries Supabase, which counts as activity)
-        run: curl -s -o /dev/null -w "Status: %{http_code}\n" https://data-belanja-bosp.vercel.app/api/schools
+        run: |
+          curl -s -o /dev/null -w "Status: %{http_code}\n" https://data-belanja-bosp.vercel.app/api/schools
