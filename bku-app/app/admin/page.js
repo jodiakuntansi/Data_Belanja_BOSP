@@ -150,6 +150,7 @@ function Dashboard({ password, onLogout }) {
   const [filterPeriod, setFilterPeriod] = useState("");
   const [search, setSearch] = useState("");
   const [expandedRow, setExpandedRow] = useState(null);
+  const [expandedJenjang, setExpandedJenjang] = useState(null);
   const [view, setView] = useState("sekolah");
 
   const load = useCallback(async () => {
@@ -314,12 +315,54 @@ function Dashboard({ password, onLogout }) {
                 <span>Jenjang</span><span className="text-right">Sekolah</span><span className="text-right">Modal</span><span className="text-right">Barang & jasa</span><span className="text-right">Belum</span>
               </div>
               {jenjangGroups.map((jg) => (
-                <div key={jg.jenjang} className="grid grid-cols-[1fr_80px_110px_110px_70px] items-center text-sm py-2 border-b border-border last:border-0">
-                  <span className="font-semibold text-ink">{jg.jenjang}</span>
-                  <span className="text-right text-inksoft">{jg.schools.length}{jg.rosterCount ? ` / ${jg.rosterCount}` : ""}</span>
-                  <span className="text-right font-mono text-gold">{fmtRp(jg.totalModal)}</span>
-                  <span className="text-right font-mono text-green">{fmtRp(jg.totalBarangJasa)}</span>
-                  <span className={`text-right font-semibold ${jg.belum.length ? "text-red" : "text-green"}`}>{jg.rosterCount ? jg.belum.length : "–"}</span>
+                <div key={jg.jenjang}>
+                  <div
+                    onClick={() => setExpandedJenjang((j) => (j === jg.jenjang ? null : jg.jenjang))}
+                    className="grid grid-cols-[1fr_80px_110px_110px_70px] items-center text-sm py-2 border-b border-border last:border-0 cursor-pointer hover:bg-paper"
+                  >
+                    <span className="font-semibold text-ink flex items-center gap-1">
+                      <span className="text-inksoft text-xs">{expandedJenjang === jg.jenjang ? "▾" : "▸"}</span>
+                      {jg.jenjang}
+                    </span>
+                    <span className="text-right text-inksoft">{jg.schools.length}{jg.rosterCount ? ` / ${jg.rosterCount}` : ""}</span>
+                    <span className="text-right font-mono text-gold">{fmtRp(jg.totalModal)}</span>
+                    <span className="text-right font-mono text-green">{fmtRp(jg.totalBarangJasa)}</span>
+                    <span className={`text-right font-semibold ${jg.belum.length ? "text-red" : "text-green"}`}>{jg.rosterCount ? jg.belum.length : "–"}</span>
+                  </div>
+                  {expandedJenjang === jg.jenjang && (
+                    <div className="pb-3 pl-4 pr-1 grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-xs font-semibold text-green mb-1.5">Sudah submit ({jg.schools.length})</div>
+                        {jg.schools.length === 0 ? (
+                          <div className="text-xs text-inksoft">Belum ada.</div>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            {jg.schools
+                              .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""))
+                              .map((s) => (
+                                <div key={s.npsn} className="text-xs text-ink bg-green/5 rounded px-2 py-1">{s.nama_sekolah}</div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-red mb-1.5">Belum submit ({jg.belum.length})</div>
+                        {!jg.rosterCount ? (
+                          <div className="text-xs text-inksoft">Daftar sekolah jenjang ini belum diisi.</div>
+                        ) : jg.belum.length === 0 ? (
+                          <div className="text-xs text-inksoft">Semua sudah submit. 🎉</div>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            {jg.belum
+                              .sort((a, b) => (a.nama || "").localeCompare(b.nama || ""))
+                              .map((s) => (
+                                <div key={s.npsn} className="text-xs text-ink bg-red/5 rounded px-2 py-1">{s.nama}</div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
