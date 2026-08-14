@@ -118,8 +118,8 @@ function PasswordGate({ onOk }) {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <form onSubmit={submit} className="max-w-sm w-full bg-card border border-border rounded-lg p-6">
+    <main className="ledger-paper min-h-screen flex items-center justify-center p-6">
+      <form onSubmit={submit} className="max-w-sm w-full bg-card border border-border rounded-lg shadow-sm p-6">
         <h1 className="font-serif text-lg font-bold text-ink mb-1">Rekap dinas</h1>
         <p className="text-sm text-inksoft mb-5">Masukkan password dinas untuk melihat rekap.</p>
         <input
@@ -343,7 +343,7 @@ function Dashboard({ password, onLogout }) {
   };
 
   return (
-    <main className="min-h-screen p-6">
+    <main className="ledger-paper min-h-screen p-6">
       <div className="max-w-3xl mx-auto">
         <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
           <div>
@@ -398,25 +398,25 @@ function Dashboard({ password, onLogout }) {
         </div>
 
         {loading ? (
-          <div className="bg-card border border-border rounded-lg p-5">Memuat data...</div>
+          <div className="bg-card border border-border rounded-lg shadow-sm p-5">Memuat data...</div>
         ) : (
           <>
             <div className="flex gap-3 mb-4 flex-wrap">
-              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg p-4">
+              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg shadow-sm p-4">
                 <div className="text-xs text-inksoft uppercase mb-1">Sekolah submit</div>
                 <div className="font-mono text-lg font-bold text-ink">{filtered.length}{roster.length ? ` / ${roster.length}` : ""}</div>
               </div>
-              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg p-4">
+              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg shadow-sm p-4">
                 <div className="text-xs text-inksoft uppercase mb-1">Total belanja modal</div>
                 <div className="font-mono text-lg font-bold text-gold">{fmtRp(totalModal)}</div>
               </div>
-              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg p-4">
+              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg shadow-sm p-4">
                 <div className="text-xs text-inksoft uppercase mb-1">Total belanja barang & jasa</div>
                 <div className="font-mono text-lg font-bold text-green">{fmtRp(totalBarangJasa)}</div>
               </div>
             </div>
 
-            <div className="bg-card border border-border rounded-lg p-5 mb-4">
+            <div className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
               <div className="font-serif font-bold text-ink mb-3">Ringkasan per jenjang</div>
               <div className="grid grid-cols-[1fr_80px_110px_110px_70px] text-xs text-inksoft uppercase pb-2 border-b border-border">
                 <span>Jenjang</span><span className="text-right">Sekolah</span><span className="text-right">Modal</span><span className="text-right">Barang & jasa</span><span className="text-right">Belum</span>
@@ -474,7 +474,7 @@ function Dashboard({ password, onLogout }) {
               ))}
             </div>
 
-            <div className="bg-card border border-border rounded-lg p-5 mb-4">
+            <div className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
               <div className="flex justify-between items-center mb-2">
                 <div className="font-serif font-bold text-ink">Daftar sekolah & PIN</div>
                 <button onClick={() => setEditingRoster((v) => !v)} className="text-xs border border-border rounded-md px-3 py-1.5 text-inksoft">
@@ -515,7 +515,7 @@ function Dashboard({ password, onLogout }) {
 
             {view === "sekolah"
               ? jenjangGroups.map((jg) => (
-                  <div key={jg.jenjang} className="bg-card border border-border rounded-lg p-5 mb-4">
+                  <div key={jg.jenjang} className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
                     <div className="font-serif font-bold text-ink mb-3">{jg.jenjang} <span className="text-xs font-normal text-inksoft">· {jg.schools.length} sekolah submit</span></div>
                     {jg.schools.length === 0 ? (
                       <div className="text-sm text-inksoft">Belum ada submisi {jg.jenjang} untuk periode ini.</div>
@@ -553,7 +553,7 @@ function Dashboard({ password, onLogout }) {
               : jenjangGroups.map((jg) => {
                   const kodeRincian = buildKodeAgg(jg.schools);
                   return (
-                    <div key={jg.jenjang} className="bg-card border border-border rounded-lg p-5 mb-4">
+                    <div key={jg.jenjang} className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
                       <div className="font-serif font-bold text-ink mb-3">{jg.jenjang}</div>
                       {kodeRincian.length === 0 ? (
                         <div className="text-sm text-inksoft">Belum ada submisi {jg.jenjang} untuk periode ini.</div>
