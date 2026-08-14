@@ -229,45 +229,65 @@ function Dashboard({ password, onLogout }) {
     return Object.values(agg).map((a) => ({ ...a, jumlahSekolah: a.sekolahSet.size })).sort((a, b) => b.total - a.total);
   }
 
-  const exportExcel = () => {
+  const JENJANG_SHEET_NAME = { "TK/PAUD": "TK-PAUD", SD: "SD", SMP: "SMP" };
+  const periodFileTag = () => periodLabel(activePeriod).replace(/\s+/g, "-").replace(/[()–]/g, "");
+
+  // File 1: total belanja modal & barang/jasa per sekolah, satu sheet per jenjang.
+  const exportRekapTotal = () => {
     const wb = XLSX.utils.book_new();
-
-    const ringkasanRows = [
-      ["Jenjang", "Sekolah submit", "Sekolah terdaftar", "Belum submit", "Total belanja modal", "Total belanja barang & jasa"],
-      ...jenjangGroups.map((jg) => [jg.jenjang, jg.schools.length, jg.rosterCount, jg.belum.length, jg.totalModal, jg.totalBarangJasa]),
-      ["TOTAL", filtered.length, roster.length, belum.length, totalModal, totalBarangJasa],
-    ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ringkasanRows), "Ringkasan per jenjang");
-
-    const sekolahRows = [
-      ["NPSN", "Nama Sekolah", "Jenjang", "Bulan", "Belanja Modal", "Belanja Barang & Jasa", "Valid (sesuai total file)"],
-      ...jenjangGroups.flatMap((jg) =>
-        jg.schools.map((s) => [
-          s.npsn,
-          s.nama_sekolah,
-          s.jenjang,
-          (s.bulanList || []).join(", "),
-          s.totals?.totalModal || 0,
-          s.totals?.totalBarangJasa || 0,
-          s.integrity_ok ? "Ya" : "Tidak",
-        ])
-      ),
-    ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sekolahRows), "Per sekolah");
-
-    if (belum.length > 0) {
-      const belumRows = [["NPSN", "Nama Sekolah", "Jenjang"], ...belum.map((s) => [s.npsn, s.nama, s.jenjang])];
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(belumRows), "Belum submit");
+    for (const jenjang of JENJANG_ORDER) {
+      const jg = jenjangGroups.find((j) => j.jenjang === jenjang);
+      const rows = [
+        ["Nama Sekolah", "NPSN", "Bulan", "Belanja Modal", "Belanja Barang & Jasa"],
+        ...(jg ? jg.schools : [])
+          .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""))
+          .map((s) => [s.nama_sekolah, s.npsn, (s.bulanList || []).join(", "), s.totals?.totalModal || 0, s.totals?.totalBarangJasa || 0]),
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), JENJANG_SHEET_NAME[jenjang]);
     }
+    XLSX.writeFile(wb, `Rekap-Total-per-Jenjang-${periodFileTag()}.xlsx`);
+  };
 
-    const kodeRows = [
-      ["Kode Rekening", "Kategori", "Uraian Rekening", "Jumlah Sekolah", "Jumlah Transaksi", "Total"],
-      ...buildKodeAgg(filtered).map((g) => [g.kode, CATEGORY_LABEL[g.kategori], g.uraian || "", g.jumlahSekolah, g.jumlahTransaksi, g.total]),
-    ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kodeRows), "Rincian per kode rekening");
+  // File 2: rincian per kode rekening — TK/PAUD & SD digabung semua sekolah,
+  // SMP dipisah per sekolah.
+  const exportRincianKode = () => {
+    const wb = XLSX.utils.book_new();
+    for (const jenjang of JENJANG_ORDER) {
+      const jg = jenjangGroups.find((j) => j.jenjang === jenjang);
+      const schools = jg ? jg.schools : [];
+      let rows;
+      if (jenjang === "SMP") {
+        rows = [["Nama Sekolah", "Kode Rekening", "Kategori", "Uraian Rekening", "Total"]];
+        for (const s of [...schools].sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""))) {
+          for (const g of s.rincian || []) {
+            rows.push([s.nama_sekolah, g.kode, CATEGORY_LABEL[g.kategori], g.uraian || "", g.total]);
+          }
+        }
+      } else {
+        rows = [
+          ["Kode Rekening", "Kategori", "Uraian Rekening", "Jumlah Sekolah", "Total"],
+          ...buildKodeAgg(schools).map((g) => [g.kode, CATEGORY_LABEL[g.kategori], g.uraian || "", g.jumlahSekolah, g.total]),
+        ];
+      }
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), JENJANG_SHEET_NAME[jenjang]);
+    }
+    XLSX.writeFile(wb, `Rincian-Kode-Rekening-${periodFileTag()}.xlsx`);
+  };
 
-    const fileName = `Rekap-BKU-${periodLabel(activePeriod).replace(/\s+/g, "-")}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+  // File 3: status sudah/belum submit, satu sheet per jenjang.
+  const exportStatusSubmit = () => {
+    const wb = XLSX.utils.book_new();
+    for (const jenjang of JENJANG_ORDER) {
+      const jg = jenjangGroups.find((j) => j.jenjang === jenjang);
+      const sudah = jg ? jg.schools.map((s) => ({ npsn: s.npsn, nama: s.nama_sekolah, status: "Sudah" })) : [];
+      const belumList = jg ? jg.belum.map((s) => ({ npsn: s.npsn, nama: s.nama, status: "Belum" })) : [];
+      const rows = [
+        ["NPSN", "Nama Sekolah", "Status"],
+        ...[...sudah, ...belumList].sort((a, b) => (a.nama || "").localeCompare(b.nama || "")).map((s) => [s.npsn, s.nama, s.status]),
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), JENJANG_SHEET_NAME[jenjang]);
+    }
+    XLSX.writeFile(wb, `Status-Submit-${periodFileTag()}.xlsx`);
   };
 
   const saveRoster = async () => {
@@ -330,12 +350,29 @@ function Dashboard({ password, onLogout }) {
             className="border border-border rounded-md px-3 py-2 text-sm w-56"
           />
           <button onClick={load} className="text-xs text-inksoft border border-border rounded-md px-3 py-2">Muat ulang</button>
+        </div>
+
+        <div className="flex gap-2 mb-4 flex-wrap">
           <button
-            onClick={exportExcel}
+            onClick={exportRekapTotal}
             disabled={filtered.length === 0}
             className="text-xs text-white bg-green rounded-md px-3 py-2 font-semibold disabled:opacity-40"
           >
-            ⬇ Unduh Excel
+            ⬇ Rekap Total per Jenjang
+          </button>
+          <button
+            onClick={exportRincianKode}
+            disabled={filtered.length === 0}
+            className="text-xs text-white bg-green rounded-md px-3 py-2 font-semibold disabled:opacity-40"
+          >
+            ⬇ Rincian Kode Rekening
+          </button>
+          <button
+            onClick={exportStatusSubmit}
+            disabled={roster.length === 0}
+            className="text-xs text-white bg-green rounded-md px-3 py-2 font-semibold disabled:opacity-40"
+          >
+            ⬇ Status Submit
           </button>
         </div>
 
