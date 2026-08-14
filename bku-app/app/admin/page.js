@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import * as XLSX from "xlsx";
 import { CATEGORY_LABEL } from "../../lib/parseBKU";
 
 const CATEGORY_TW = {
@@ -228,6 +229,47 @@ function Dashboard({ password, onLogout }) {
     return Object.values(agg).map((a) => ({ ...a, jumlahSekolah: a.sekolahSet.size })).sort((a, b) => b.total - a.total);
   }
 
+  const exportExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    const ringkasanRows = [
+      ["Jenjang", "Sekolah submit", "Sekolah terdaftar", "Belum submit", "Total belanja modal", "Total belanja barang & jasa"],
+      ...jenjangGroups.map((jg) => [jg.jenjang, jg.schools.length, jg.rosterCount, jg.belum.length, jg.totalModal, jg.totalBarangJasa]),
+      ["TOTAL", filtered.length, roster.length, belum.length, totalModal, totalBarangJasa],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ringkasanRows), "Ringkasan per jenjang");
+
+    const sekolahRows = [
+      ["NPSN", "Nama Sekolah", "Jenjang", "Bulan", "Belanja Modal", "Belanja Barang & Jasa", "Valid (sesuai total file)"],
+      ...jenjangGroups.flatMap((jg) =>
+        jg.schools.map((s) => [
+          s.npsn,
+          s.nama_sekolah,
+          s.jenjang,
+          (s.bulanList || []).join(", "),
+          s.totals?.totalModal || 0,
+          s.totals?.totalBarangJasa || 0,
+          s.integrity_ok ? "Ya" : "Tidak",
+        ])
+      ),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sekolahRows), "Per sekolah");
+
+    if (belum.length > 0) {
+      const belumRows = [["NPSN", "Nama Sekolah", "Jenjang"], ...belum.map((s) => [s.npsn, s.nama, s.jenjang])];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(belumRows), "Belum submit");
+    }
+
+    const kodeRows = [
+      ["Kode Rekening", "Kategori", "Uraian Rekening", "Jumlah Sekolah", "Jumlah Transaksi", "Total"],
+      ...buildKodeAgg(filtered).map((g) => [g.kode, CATEGORY_LABEL[g.kategori], g.uraian || "", g.jumlahSekolah, g.jumlahTransaksi, g.total]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kodeRows), "Rincian per kode rekening");
+
+    const fileName = `Rekap-BKU-${periodLabel(activePeriod).replace(/\s+/g, "-")}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
   const saveRoster = async () => {
     setRosterSaving(true);
     setRosterMsg("");
@@ -288,6 +330,13 @@ function Dashboard({ password, onLogout }) {
             className="border border-border rounded-md px-3 py-2 text-sm w-56"
           />
           <button onClick={load} className="text-xs text-inksoft border border-border rounded-md px-3 py-2">Muat ulang</button>
+          <button
+            onClick={exportExcel}
+            disabled={filtered.length === 0}
+            className="text-xs text-white bg-green rounded-md px-3 py-2 font-semibold disabled:opacity-40"
+          >
+            ⬇ Unduh Excel
+          </button>
         </div>
 
         {loading ? (
