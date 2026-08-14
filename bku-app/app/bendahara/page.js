@@ -122,8 +122,8 @@ function LoginForm({ onLogin }) {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <form onSubmit={submit} className="max-w-sm w-full bg-card border border-border rounded-lg p-6">
+    <main className="ledger-paper min-h-screen flex items-center justify-center p-6">
+      <form onSubmit={submit} className="max-w-sm w-full bg-card border border-border rounded-lg shadow-sm p-6">
         <h1 className="font-serif text-lg font-bold text-ink mb-1">Login bendahara</h1>
         <p className="text-sm text-inksoft mb-5">Cari sekolah dan masukkan PIN yang diberikan dinas.</p>
 
@@ -230,7 +230,7 @@ function UploadFlow({ sekolah, onLogout }) {
   };
 
   return (
-    <main className="min-h-screen p-6">
+    <main className="ledger-paper min-h-screen p-6">
       <div className="max-w-2xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -242,7 +242,7 @@ function UploadFlow({ sekolah, onLogout }) {
           </button>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-5 mb-4">
+        <div className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
           <div className="font-serif font-bold text-ink mb-3">Unggah Buku Kas Umum (BKU)</div>
           <label className="flex items-center gap-3 border-2 border-dashed border-border rounded-lg p-4 cursor-pointer bg-[#FFFCF3]">
             <div>
@@ -258,7 +258,7 @@ function UploadFlow({ sekolah, onLogout }) {
           </label>
         </div>
 
-        {parsing && <div className="bg-card border border-border rounded-lg p-5 text-sm text-inksoft mb-4">Membaca dan mengklasifikasikan data...</div>}
+        {parsing && <div className="bg-card border border-border rounded-lg shadow-sm p-5 text-sm text-inksoft mb-4">Membaca dan mengklasifikasikan data...</div>}
 
         {parsed && !parsing && (
           <>
@@ -275,7 +275,7 @@ function UploadFlow({ sekolah, onLogout }) {
 
             {parsed.totals && (
               <>
-                <div className="bg-card border border-border rounded-lg p-5 mb-4 flex justify-between items-center flex-wrap gap-3">
+                <div className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4 flex justify-between items-center flex-wrap gap-3">
                   <div>
                     <div className="font-serif font-bold text-ink">{parsed.namaSekolah}</div>
                     <div className="text-xs text-inksoft">{parsed.bulan} {parsed.tahun}</div>
@@ -284,17 +284,17 @@ function UploadFlow({ sekolah, onLogout }) {
                 </div>
 
                 <div className="flex gap-3 mb-4 flex-wrap">
-                  <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg p-4">
+                  <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg shadow-sm p-4">
                     <div className="text-xs text-inksoft uppercase mb-1">Belanja modal</div>
                     <div className="font-mono text-lg font-bold text-gold">{fmtRp(parsed.totals.totalModal)}</div>
                   </div>
-                  <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg p-4">
+                  <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg shadow-sm p-4">
                     <div className="text-xs text-inksoft uppercase mb-1">Belanja barang & jasa</div>
                     <div className="font-mono text-lg font-bold text-green">{fmtRp(parsed.totals.totalBarangJasa)}</div>
                   </div>
                 </div>
 
-                <div className="bg-card border border-border rounded-lg p-5 mb-4">
+                <div className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
                   <div className="font-serif font-bold text-ink mb-3">Rincian per kode rekening</div>
                   {parsed.rincian.map((g) => (
                     <div key={g.kode} className="py-2 border-b border-border last:border-0">
@@ -309,7 +309,7 @@ function UploadFlow({ sekolah, onLogout }) {
                   ))}
                 </div>
 
-                <div className="bg-card border border-border rounded-lg p-5 flex justify-between items-center flex-wrap gap-3">
+                <div className="bg-card border border-border rounded-lg shadow-sm p-5 flex justify-between items-center flex-wrap gap-3">
                   <div className="text-sm text-inksoft">
                     {saved ? <span className="text-green font-semibold">Data tersimpan dan masuk ke rekap dinas.</span> : "Periksa hasil di atas sebelum mengirim."}
                     {saveError && <span className="text-red block mt-1">{saveError}</span>}
