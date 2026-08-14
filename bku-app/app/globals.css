@@ -6,3 +6,59 @@ body {
   background: #f6f1e4;
   color: #182849;
 }
+
+/* Signature texture: ruled ledger paper with a red margin rule, echoing
+   the physical Buku Kas Umum sheets this app classifies. Used sparingly
+   as a background accent, never behind dense text. */
+.ledger-paper {
+  background-color: #f6f1e4;
+  background-image: linear-gradient(
+      to right,
+      transparent 56px,
+      rgba(165, 50, 42, 0.22) 56px,
+      rgba(165, 50, 42, 0.22) 58px,
+      transparent 58px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 27px,
+      rgba(24, 40, 73, 0.055) 27px,
+      rgba(24, 40, 73, 0.055) 28px
+    );
+}
+
+@keyframes stamp-in {
+  from {
+    opacity: 0;
+    transform: rotate(-14deg) scale(1.4);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-8deg) scale(1);
+  }
+}
+.stamp-enter {
+  animation: stamp-in 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) 0.15s both;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise-in {
+  animation: rise-in 0.5s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp-enter,
+  .rise-in {
+    animation: none !important;
+  }
+}
