@@ -193,10 +193,31 @@ function Dashboard({ password, onLogout }) {
 
   const rawFiltered = submissions.filter((s) => {
     if (period && (s.tahun !== period.tahun || !period.bulanSet.has(s.bulan))) return false;
-    if (search && !`${s.nama_sekolah} ${s.npsn}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
-  const filtered = aggregateByNpsn(rawFiltered);
+
+  // For semester/tahunan periods, only count a school as "sudah submit"
+  // once every month in that range has been submitted — a school with
+  // only 1 of 6 (or 12) months filled in is treated as "belum", not
+  // partially done, so totals never look complete when they aren't.
+  const bulanByNpsn = {};
+  for (const s of rawFiltered) {
+    if (!bulanByNpsn[s.npsn]) bulanByNpsn[s.npsn] = new Set();
+    bulanByNpsn[s.npsn].add(s.bulan);
+  }
+  const isComplete = (npsn) => {
+    if (!period) return true;
+    for (const b of period.bulanSet) {
+      if (!bulanByNpsn[npsn]?.has(b)) return false;
+    }
+    return true;
+  };
+
+  const completeFiltered = rawFiltered.filter((s) => isComplete(s.npsn));
+  const searched = completeFiltered.filter(
+    (s) => !search || `${s.nama_sekolah} ${s.npsn}`.toLowerCase().includes(search.toLowerCase())
+  );
+  const filtered = aggregateByNpsn(searched);
 
   const totalModal = filtered.reduce((s, x) => s + (x.totals?.totalModal || 0), 0);
   const totalBarangJasa = filtered.reduce((s, x) => s + (x.totals?.totalBarangJasa || 0), 0);
