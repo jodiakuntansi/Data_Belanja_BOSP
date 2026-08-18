@@ -4,14 +4,16 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        ink: "#182849",
-        inksoft: "#3C4A6B",
-        paper: "#F6F1E4",
-        card: "#FFFDF7",
-        border: "#DCD3B8",
-        red: "#A5322A",
-        green: "#2F6B4F",
-        gold: "#8A6A22",
+        ink: "#0F2A4A",
+        inksoft: "#5E7595",
+        paper: "#EEF4FC",
+        card: "#FFFFFF",
+        border: "#E2E9F5",
+        red: "#DA4B4B",
+        green: "#18A566",
+        gold: "#E08E2D",
+        blue: "#2F7DE0",
+        bluedeep: "#0F3E8C",
       },
       fontFamily: {
         serif: ["Georgia", "Times New Roman", "serif"],
