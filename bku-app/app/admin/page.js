@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import { CATEGORY_LABEL } from "../../lib/parseBKU";
+import { Landmark } from "lucide-react";
 
 const CATEGORY_TW = {
   modal: "text-gold",
@@ -118,24 +119,31 @@ function PasswordGate({ onOk }) {
   };
 
   return (
-    <main className="ledger-paper min-h-screen flex items-center justify-center p-6">
-      <form onSubmit={submit} className="max-w-sm w-full bg-card border border-border rounded-lg shadow-sm p-6">
-        <h1 className="font-serif text-lg font-bold text-ink mb-1">Rekap dinas</h1>
-        <p className="text-sm text-inksoft mb-5">Masukkan password dinas untuk melihat rekap.</p>
+    <main className="min-h-screen bg-paper flex items-center justify-center p-6">
+      <div className="max-w-sm w-full rounded-2xl shadow-lg overflow-hidden bg-card">
+        <div className="gradient-hero px-6 pt-8 pb-6 text-center">
+          <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center mx-auto mb-3">
+            <Landmark size={20} className="text-white" />
+          </div>
+          <h1 className="font-extrabold text-lg text-white">Rekap dinas</h1>
+          <p className="text-xs text-white/75 mt-1">Masukkan password dinas untuk melihat rekap.</p>
+        </div>
+        <form onSubmit={submit} className="p-6">
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full mb-4 border border-border rounded-md px-3 py-2 text-sm bg-white"
+          className="w-full mb-4 border border-border rounded-xl px-3 py-2.5 text-sm bg-white border-border focus:border-blue outline-none transition"
           placeholder="Password"
           required
         />
         {error && <div className="text-red text-sm mb-4">{error}</div>}
-        <button type="submit" disabled={loading} className="w-full bg-ink text-white rounded-md py-2.5 font-semibold text-sm disabled:opacity-60">
+        <button type="submit" disabled={loading} className="w-full gradient-hero text-white rounded-xl py-3 font-bold text-sm disabled:opacity-60 shadow-md hover:brightness-110 transition">
           {loading ? "Memeriksa..." : "Masuk"}
         </button>
         <Link href="/" className="block text-center text-xs text-inksoft mt-4">← Kembali</Link>
-      </form>
+        </form>
+      </div>
     </main>
   );
 }
@@ -343,21 +351,21 @@ function Dashboard({ password, onLogout }) {
   };
 
   return (
-    <main className="ledger-paper min-h-screen p-6">
+    <main className="min-h-screen bg-paper p-6">
       <div className="max-w-3xl mx-auto">
         <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
           <div>
-            <h1 className="font-serif text-xl font-bold text-ink">Rekap dinas</h1>
+            <h1 className="font-extrabold text-xl text-ink">Rekap dinas</h1>
             <p className="text-xs text-inksoft">Klasifikasi belanja BKU — TK/PAUD, SD, SMP</p>
           </div>
-          <button onClick={onLogout} className="text-xs text-inksoft border border-border rounded-md px-3 py-1.5">Keluar</button>
+          <button onClick={onLogout} className="text-xs text-inksoft border border-border rounded-xl px-3 py-1.5">Keluar</button>
         </div>
 
         <div className="flex gap-3 mb-4 flex-wrap items-center">
           <select
             value={activePeriod}
             onChange={(e) => setFilterPeriod(e.target.value)}
-            className="border border-border rounded-md px-3 py-2 text-sm bg-white"
+            className="border border-border rounded-xl px-3 py-2.5 text-sm bg-white border-border focus:border-blue outline-none transition"
           >
             {periodOptions.length === 0 && <option value="">Belum ada data</option>}
             {periodOptions.map((p) => (
@@ -368,56 +376,56 @@ function Dashboard({ password, onLogout }) {
             placeholder="Cari nama sekolah / NPSN"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="border border-border rounded-md px-3 py-2 text-sm w-56"
+            className="border border-border rounded-xl px-3 py-2 text-sm w-56"
           />
-          <button onClick={load} className="text-xs text-inksoft border border-border rounded-md px-3 py-2">Muat ulang</button>
+          <button onClick={load} className="text-xs text-inksoft border border-border rounded-xl px-3 py-2">Muat ulang</button>
         </div>
 
         <div className="flex gap-2 mb-4 flex-wrap">
           <button
             onClick={exportRekapTotal}
             disabled={filtered.length === 0}
-            className="text-xs text-white bg-green rounded-md px-3 py-2 font-semibold disabled:opacity-40"
+            className="text-xs text-white bg-green rounded-xl px-3 py-2 font-semibold disabled:opacity-40"
           >
             ⬇ Rekap Total per Jenjang
           </button>
           <button
             onClick={exportRincianKode}
             disabled={filtered.length === 0}
-            className="text-xs text-white bg-green rounded-md px-3 py-2 font-semibold disabled:opacity-40"
+            className="text-xs text-white bg-green rounded-xl px-3 py-2 font-semibold disabled:opacity-40"
           >
             ⬇ Rincian Kode Rekening
           </button>
           <button
             onClick={exportStatusSubmit}
             disabled={roster.length === 0}
-            className="text-xs text-white bg-green rounded-md px-3 py-2 font-semibold disabled:opacity-40"
+            className="text-xs text-white bg-green rounded-xl px-3 py-2 font-semibold disabled:opacity-40"
           >
             ⬇ Status Submit
           </button>
         </div>
 
         {loading ? (
-          <div className="bg-card border border-border rounded-lg shadow-sm p-5">Memuat data...</div>
+          <div className="bg-card border border-border rounded-2xl shadow-sm p-5">Memuat data...</div>
         ) : (
           <>
             <div className="flex gap-3 mb-4 flex-wrap">
-              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg shadow-sm p-4">
+              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                 <div className="text-xs text-inksoft uppercase mb-1">Sekolah submit</div>
                 <div className="font-mono text-lg font-bold text-ink">{filtered.length}{roster.length ? ` / ${roster.length}` : ""}</div>
               </div>
-              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg shadow-sm p-4">
+              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                 <div className="text-xs text-inksoft uppercase mb-1">Total belanja modal</div>
                 <div className="font-mono text-lg font-bold text-gold">{fmtRp(totalModal)}</div>
               </div>
-              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg shadow-sm p-4">
+              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                 <div className="text-xs text-inksoft uppercase mb-1">Total belanja barang & jasa</div>
                 <div className="font-mono text-lg font-bold text-green">{fmtRp(totalBarangJasa)}</div>
               </div>
             </div>
 
-            <div className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
-              <div className="font-serif font-bold text-ink mb-3">Ringkasan per jenjang</div>
+            <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+              <div className="font-extrabold text-ink mb-3">Ringkasan per jenjang</div>
               <div className="grid grid-cols-[1fr_80px_110px_110px_70px] text-xs text-inksoft uppercase pb-2 border-b border-border">
                 <span>Jenjang</span><span className="text-right">Sekolah</span><span className="text-right">Modal</span><span className="text-right">Barang & jasa</span><span className="text-right">Belum</span>
               </div>
@@ -474,10 +482,10 @@ function Dashboard({ password, onLogout }) {
               ))}
             </div>
 
-            <div className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
+            <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
               <div className="flex justify-between items-center mb-2">
-                <div className="font-serif font-bold text-ink">Daftar sekolah & PIN</div>
-                <button onClick={() => setEditingRoster((v) => !v)} className="text-xs border border-border rounded-md px-3 py-1.5 text-inksoft">
+                <div className="font-extrabold text-ink">Daftar sekolah & PIN</div>
+                <button onClick={() => setEditingRoster((v) => !v)} className="text-xs border border-border rounded-xl px-3 py-1.5 text-inksoft">
                   {editingRoster ? "Batal" : "Kelola daftar"}
                 </button>
               </div>
@@ -488,11 +496,11 @@ function Dashboard({ password, onLogout }) {
                     value={rosterText}
                     onChange={(e) => setRosterText(e.target.value)}
                     rows={10}
-                    className="w-full font-mono text-xs border border-border rounded-md p-2"
+                    className="w-full font-mono text-xs border border-border rounded-xl p-2"
                     placeholder={"50104137|SD NEGERI 1 CONTOH|SD|123456"}
                   />
                   {rosterMsg && <div className="text-sm text-inksoft mt-2">{rosterMsg}</div>}
-                  <button onClick={saveRoster} disabled={rosterSaving} className="mt-2 bg-ink text-white rounded-md px-4 py-2 text-sm font-semibold">
+                  <button onClick={saveRoster} disabled={rosterSaving} className="mt-2 bg-ink text-white rounded-xl px-4 py-2 text-sm font-semibold">
                     {rosterSaving ? "Menyimpan..." : "Simpan daftar"}
                   </button>
                 </div>
@@ -506,7 +514,7 @@ function Dashboard({ password, onLogout }) {
                 <button
                   key={t.id}
                   onClick={() => setView(t.id)}
-                  className={`text-xs font-semibold rounded-md px-3 py-1.5 border ${view === t.id ? "bg-ink text-white border-ink" : "border-border text-inksoft"}`}
+                  className={`text-xs font-semibold rounded-xl px-3 py-1.5 border ${view === t.id ? "bg-ink text-white border-ink" : "border-border text-inksoft"}`}
                 >
                   {t.label}
                 </button>
@@ -515,8 +523,8 @@ function Dashboard({ password, onLogout }) {
 
             {view === "sekolah"
               ? jenjangGroups.map((jg) => (
-                  <div key={jg.jenjang} className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
-                    <div className="font-serif font-bold text-ink mb-3">{jg.jenjang} <span className="text-xs font-normal text-inksoft">· {jg.schools.length} sekolah submit</span></div>
+                  <div key={jg.jenjang} className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+                    <div className="font-extrabold text-ink mb-3">{jg.jenjang} <span className="text-xs font-normal text-inksoft">· {jg.schools.length} sekolah submit</span></div>
                     {jg.schools.length === 0 ? (
                       <div className="text-sm text-inksoft">Belum ada submisi {jg.jenjang} untuk periode ini.</div>
                     ) : (
@@ -553,8 +561,8 @@ function Dashboard({ password, onLogout }) {
               : jenjangGroups.map((jg) => {
                   const kodeRincian = buildKodeAgg(jg.schools);
                   return (
-                    <div key={jg.jenjang} className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
-                      <div className="font-serif font-bold text-ink mb-3">{jg.jenjang}</div>
+                    <div key={jg.jenjang} className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+                      <div className="font-extrabold text-ink mb-3">{jg.jenjang}</div>
                       {kodeRincian.length === 0 ? (
                         <div className="text-sm text-inksoft">Belum ada submisi {jg.jenjang} untuk periode ini.</div>
                       ) : (
