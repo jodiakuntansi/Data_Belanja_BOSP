@@ -3,43 +3,32 @@
 @tailwind utilities;
 
 body {
-  background: #f6f1e4;
-  color: #182849;
+  background: #eef4fc;
+  color: #0f2a4a;
 }
 
-/* Signature texture: ruled ledger paper with a red margin rule, echoing
-   the physical Buku Kas Umum sheets this app classifies. Used sparingly
-   as a background accent, never behind dense text. */
-.ledger-paper {
-  background-color: #f6f1e4;
-  background-image: linear-gradient(
-      to right,
-      transparent 56px,
-      rgba(165, 50, 42, 0.22) 56px,
-      rgba(165, 50, 42, 0.22) 58px,
-      transparent 58px
-    ),
-    repeating-linear-gradient(
-      to bottom,
-      transparent,
-      transparent 27px,
-      rgba(24, 40, 73, 0.055) 27px,
-      rgba(24, 40, 73, 0.055) 28px
-    );
+/* Signature motif: the deep-to-bright blue gradient used behind hero /
+   header sections, echoing the reference fintech app's card top. */
+.gradient-hero {
+  background: linear-gradient(160deg, #0f3e8c 0%, #2f7de0 65%, #4a9af0 100%);
+}
+
+.icon-badge {
+  background: #eaf2fd;
 }
 
 @keyframes stamp-in {
   from {
     opacity: 0;
-    transform: rotate(-14deg) scale(1.4);
+    transform: scale(0.85);
   }
   to {
     opacity: 1;
-    transform: rotate(-8deg) scale(1);
+    transform: scale(1);
   }
 }
 .stamp-enter {
-  animation: stamp-in 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) 0.15s both;
+  animation: stamp-in 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) 0.1s both;
 }
 
 @keyframes rise-in {
