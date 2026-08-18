@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import Link from "next/link";
 import { parseBKU, parseBKUFromPDF, CATEGORY_LABEL } from "../../lib/parseBKU";
+import { Wallet } from "lucide-react";
 
 const CATEGORY_TW = {
   modal: "text-gold",
@@ -18,11 +19,12 @@ function fmtRp(n) {
 function Stamp({ ok }) {
   return (
     <div
-      className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 font-serif font-bold text-sm -rotate-3 border-2 ${
-        ok ? "border-green text-green bg-green/5" : "border-red text-red bg-red/5"
+      className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 font-bold text-xs tracking-wide ${
+        ok ? "text-green bg-green/10" : "text-red bg-red/10"
       }`}
     >
-      {ok ? "TERVERIFIKASI · SESUAI TOTAL FILE" : "SELISIH DITEMUKAN"}
+      <span className={`w-1.5 h-1.5 rounded-full ${ok ? "bg-green" : "bg-red"}`} />
+      {ok ? "TERVERIFIKASI" : "SELISIH DITEMUKAN"}
     </div>
   );
 }
@@ -54,10 +56,10 @@ function SchoolCombobox({ schools, npsn, onSelect }) {
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Ketik nama sekolah..."
         autoComplete="off"
-        className="w-full border border-border rounded-md px-3 py-2 text-sm bg-white"
+        className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white border-border focus:border-blue outline-none transition"
       />
       {open && (
-        <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-border rounded-md shadow-lg">
+        <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-border rounded-xl shadow-lg">
           {filtered.length === 0 ? (
             <div className="px-3 py-2 text-sm text-inksoft">Tidak ditemukan.</div>
           ) : (
@@ -122,11 +124,16 @@ function LoginForm({ onLogin }) {
   };
 
   return (
-    <main className="ledger-paper min-h-screen flex items-center justify-center p-6">
-      <form onSubmit={submit} className="max-w-sm w-full bg-card border border-border rounded-lg shadow-sm p-6">
-        <h1 className="font-serif text-lg font-bold text-ink mb-1">Login bendahara</h1>
-        <p className="text-sm text-inksoft mb-5">Cari sekolah dan masukkan PIN yang diberikan dinas.</p>
-
+    <main className="min-h-screen bg-paper flex items-center justify-center p-6">
+      <div className="max-w-sm w-full rounded-2xl shadow-lg overflow-hidden bg-card">
+        <div className="gradient-hero px-6 pt-8 pb-6 text-center">
+          <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center mx-auto mb-3">
+            <Wallet size={20} className="text-white" />
+          </div>
+          <h1 className="font-extrabold text-lg text-white">Login bendahara</h1>
+          <p className="text-xs text-white/75 mt-1">Cari sekolah dan masukkan PIN yang diberikan dinas.</p>
+        </div>
+        <form onSubmit={submit} className="p-6">
         <label className="text-xs text-inksoft block mb-1">Sekolah</label>
         <SchoolCombobox schools={schools} npsn={npsn} onSelect={setNpsn} />
 
@@ -137,7 +144,7 @@ function LoginForm({ onLogin }) {
           value={pin}
           onChange={(e) => setPin(e.target.value)}
           required
-          className="w-full mb-4 border border-border rounded-md px-3 py-2 text-sm bg-white"
+          className="w-full mb-4 border border-border rounded-xl px-3 py-2.5 text-sm bg-white border-border focus:border-blue outline-none transition"
           placeholder="6 digit"
         />
 
@@ -146,14 +153,15 @@ function LoginForm({ onLogin }) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-ink text-white rounded-md py-2.5 font-semibold text-sm disabled:opacity-60"
+          className="w-full gradient-hero text-white rounded-xl py-3 font-bold text-sm disabled:opacity-60 shadow-md hover:brightness-110 transition"
         >
           {loading ? "Memeriksa..." : "Masuk"}
         </button>
         <Link href="/" className="block text-center text-xs text-inksoft mt-4">
           ← Kembali
         </Link>
-      </form>
+        </form>
+      </div>
     </main>
   );
 }
@@ -230,21 +238,21 @@ function UploadFlow({ sekolah, onLogout }) {
   };
 
   return (
-    <main className="ledger-paper min-h-screen p-6">
+    <main className="min-h-screen bg-paper p-6">
       <div className="max-w-2xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <div className="font-serif text-lg font-bold text-ink">{sekolah.nama}</div>
+            <div className="font-extrabold text-lg text-ink">{sekolah.nama}</div>
             <div className="text-xs text-inksoft">NPSN {sekolah.npsn} · {sekolah.jenjang}</div>
           </div>
-          <button onClick={onLogout} className="text-xs text-inksoft border border-border rounded-md px-3 py-1.5">
+          <button onClick={onLogout} className="text-xs text-inksoft border border-border rounded-xl px-3 py-1.5">
             Keluar
           </button>
         </div>
 
-        <div className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
-          <div className="font-serif font-bold text-ink mb-3">Unggah Buku Kas Umum (BKU)</div>
-          <label className="flex items-center gap-3 border-2 border-dashed border-border rounded-lg p-4 cursor-pointer bg-[#FFFCF3]">
+        <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+          <div className="font-extrabold text-ink mb-3">Unggah Buku Kas Umum (BKU)</div>
+          <label className="flex items-center gap-3 border-2 border-dashed border-border rounded-2xl p-4 cursor-pointer bg-paper">
             <div>
               <div className="text-sm font-semibold text-ink">{fileName || "Klik untuk pilih file BKU (.xlsx atau .pdf)"}</div>
               <div className="text-xs text-inksoft">Format Excel atau PDF dari ARKAS, BKU bulanan standar BOSP</div>
@@ -258,12 +266,12 @@ function UploadFlow({ sekolah, onLogout }) {
           </label>
         </div>
 
-        {parsing && <div className="bg-card border border-border rounded-lg shadow-sm p-5 text-sm text-inksoft mb-4">Membaca dan mengklasifikasikan data...</div>}
+        {parsing && <div className="bg-card border border-border rounded-2xl shadow-sm p-5 text-sm text-inksoft mb-4">Membaca dan mengklasifikasikan data...</div>}
 
         {parsed && !parsing && (
           <>
             {parsed.errors && parsed.errors.length > 0 && (
-              <div className="bg-red/5 border border-red rounded-lg p-4 mb-4">
+              <div className="bg-red/5 border border-red rounded-2xl p-4 mb-4">
                 <div className="font-semibold text-red text-sm mb-2">Perhatian sebelum submit</div>
                 <ul className="list-disc pl-5 text-sm text-inksoft">
                   {parsed.errors.map((e, i) => (
@@ -275,27 +283,27 @@ function UploadFlow({ sekolah, onLogout }) {
 
             {parsed.totals && (
               <>
-                <div className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4 flex justify-between items-center flex-wrap gap-3">
+                <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4 flex justify-between items-center flex-wrap gap-3">
                   <div>
-                    <div className="font-serif font-bold text-ink">{parsed.namaSekolah}</div>
+                    <div className="font-extrabold text-ink">{parsed.namaSekolah}</div>
                     <div className="text-xs text-inksoft">{parsed.bulan} {parsed.tahun}</div>
                   </div>
                   <Stamp ok={parsed.integrityOk} />
                 </div>
 
                 <div className="flex gap-3 mb-4 flex-wrap">
-                  <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg shadow-sm p-4">
+                  <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                     <div className="text-xs text-inksoft uppercase mb-1">Belanja modal</div>
                     <div className="font-mono text-lg font-bold text-gold">{fmtRp(parsed.totals.totalModal)}</div>
                   </div>
-                  <div className="flex-1 min-w-[140px] bg-card border border-border rounded-lg shadow-sm p-4">
+                  <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                     <div className="text-xs text-inksoft uppercase mb-1">Belanja barang & jasa</div>
                     <div className="font-mono text-lg font-bold text-green">{fmtRp(parsed.totals.totalBarangJasa)}</div>
                   </div>
                 </div>
 
-                <div className="bg-card border border-border rounded-lg shadow-sm p-5 mb-4">
-                  <div className="font-serif font-bold text-ink mb-3">Rincian per kode rekening</div>
+                <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+                  <div className="font-extrabold text-ink mb-3">Rincian per kode rekening</div>
                   {parsed.rincian.map((g) => (
                     <div key={g.kode} className="py-2 border-b border-border last:border-0">
                       <div className="flex justify-between text-sm">
@@ -309,7 +317,7 @@ function UploadFlow({ sekolah, onLogout }) {
                   ))}
                 </div>
 
-                <div className="bg-card border border-border rounded-lg shadow-sm p-5 flex justify-between items-center flex-wrap gap-3">
+                <div className="bg-card border border-border rounded-2xl shadow-sm p-5 flex justify-between items-center flex-wrap gap-3">
                   <div className="text-sm text-inksoft">
                     {saved ? <span className="text-green font-semibold">Data tersimpan dan masuk ke rekap dinas.</span> : "Periksa hasil di atas sebelum mengirim."}
                     {saveError && <span className="text-red block mt-1">{saveError}</span>}
@@ -317,8 +325,8 @@ function UploadFlow({ sekolah, onLogout }) {
                   <button
                     onClick={handleSubmit}
                     disabled={!parsed.npsn || saving || saved}
-                    className={`rounded-md px-5 py-2.5 text-sm font-semibold ${
-                      saved ? "bg-[#EDE7D3] text-inksoft" : "bg-ink text-white"
+                    className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                      saved ? "bg-paper text-inksoft" : "gradient-hero text-white shadow-md hover:brightness-110"
                     }`}
                   >
                     {saving ? "Menyimpan..." : saved ? "Terkirim" : "Kirim ke rekap dinas"}
