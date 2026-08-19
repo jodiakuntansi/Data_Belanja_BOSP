@@ -90,7 +90,10 @@ function findHeaderInfo(rows) {
 function parseTanggalCell(v) {
   if (v instanceof Date) return v;
   if (typeof v === "string") {
-    const m = v.trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    // Narrow date columns in some PDFs wrap mid-string (e.g. "01-01-202\n6"),
+    // so strip all whitespace before matching rather than just trimming ends.
+    const cleaned = v.replace(/\s+/g, "");
+    const m = cleaned.match(/^(\d{2})-(\d{2})-(\d{4})$/);
     if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
   }
   return null;
@@ -270,20 +273,28 @@ function parseTable(rows) {
       const kodeParts = kodeRaw.split("\n").map((p) => p.trim()).filter(Boolean);
       const kodeUtama = kodeParts.length > 1 ? kodeParts[0] + kodeParts[1] : kodeParts[0] || "";
       const uraian = cellStr(r[cols.uraian]).trim();
+      const noBukti = cellStr(r[cols.noBukti]).trim();
       const penerimaan = parseAngka(r[cols.penerimaan]);
       const pengeluaran = parseAngka(r[cols.pengeluaran]);
-      const excluded = isSiplahPassthrough(uraian) || !kodeUtama;
+      // A real belanja transaction always carries a bukti number (e.g.
+      // "BNU41"). Rows without one — saldo carry-forward, bunga bank,
+      // SIPLah pass-through, PPh withholding received/deposited — are
+      // internal cash movements, not actual expenditure, even when a
+      // kode rekening happens to be filled in (as with PPh rows).
+      const excluded = !noBukti || isSiplahPassthrough(uraian) || !kodeUtama;
       const kategori = excluded ? null : classifyKode(kodeUtama);
       transaksi.push({
         tanggal: tanggalDate,
         kodeKegiatan: cellStr(r[cols.kodeKegiatan]).trim(),
         kodeRekening: kodeUtama,
-        noBukti: cellStr(r[cols.noBukti]).trim(),
+        noBukti,
         uraian,
         penerimaan,
         pengeluaran,
         excluded,
-        excludedReason: isSiplahPassthrough(uraian)
+        excludedReason: !noBukti
+          ? "Tidak ada No. Bukti (bukan transaksi belanja/pass-through)"
+          : isSiplahPassthrough(uraian)
           ? "Transaksi pass-through SIPLah (diabaikan)"
           : !kodeUtama
           ? "Bukan transaksi belanja (saldo/bunga bank)"
