@@ -277,26 +277,17 @@ function Dashboard({ password, onLogout }) {
     XLSX.writeFile(wb, `Rekap-Total-per-Jenjang-${periodFileTag()}.xlsx`);
   };
 
-  // File 2: rincian per kode rekening — TK/PAUD & SD digabung semua sekolah,
-  // SMP dipisah per sekolah.
+  // File 2: rincian per kode rekening, dipisah per sekolah untuk semua jenjang.
   const exportRincianKode = () => {
     const wb = XLSX.utils.book_new();
     for (const jenjang of JENJANG_ORDER) {
       const jg = jenjangGroups.find((j) => j.jenjang === jenjang);
       const schools = jg ? jg.schools : [];
-      let rows;
-      if (jenjang === "SMP") {
-        rows = [["Nama Sekolah", "Kode Rekening", "Kategori", "Uraian Rekening", "Total"]];
-        for (const s of [...schools].sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""))) {
-          for (const g of s.rincian || []) {
-            rows.push([s.nama_sekolah, g.kode, CATEGORY_LABEL[g.kategori], g.uraian || "", g.total]);
-          }
+      const rows = [["Nama Sekolah", "Kode Rekening", "Kategori", "Uraian Rekening", "Total"]];
+      for (const s of [...schools].sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""))) {
+        for (const g of s.rincian || []) {
+          rows.push([s.nama_sekolah, g.kode, CATEGORY_LABEL[g.kategori], g.uraian || "", g.total]);
         }
-      } else {
-        rows = [
-          ["Kode Rekening", "Kategori", "Uraian Rekening", "Jumlah Sekolah", "Total"],
-          ...buildKodeAgg(schools).map((g) => [g.kode, CATEGORY_LABEL[g.kategori], g.uraian || "", g.jumlahSekolah, g.total]),
-        ];
       }
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), JENJANG_SHEET_NAME[jenjang]);
     }
