@@ -1,21 +1,30 @@
 import REKENING_MAP from "./rekeningMap.json";
 
 export const CATEGORY_LABEL = {
-  modal: "Belanja modal",
+  modal_peralatan_mesin: "Belanja Modal - Peralatan dan Mesin",
+  modal_aset_lainnya: "Belanja Modal - Aset Tetap Lainnya",
   barang_jasa: "Belanja barang & jasa",
   tak_terklasifikasi: "Perlu diperiksa",
 };
 
 export const CATEGORY_COLOR = {
-  modal: "gold",
+  modal_peralatan_mesin: "gold",
+  modal_aset_lainnya: "blue",
   barang_jasa: "green",
   tak_terklasifikasi: "red",
 };
 
+// Kept for anything that still wants a simple modal/barang-jasa split
+// (e.g. quick totals): true for either modal sub-category.
+export function isModalKategori(kategori) {
+  return kategori === "modal_peralatan_mesin" || kategori === "modal_aset_lainnya";
+}
+
 export function classifyKode(kode) {
   if (!kode) return "tak_terklasifikasi";
   const k = kode.trim();
-  if (k.startsWith("5.2")) return "modal";
+  if (k.startsWith("5.2.02")) return "modal_peralatan_mesin";
+  if (k.startsWith("5.2.05")) return "modal_aset_lainnya";
   if (k.startsWith("5.1")) return "barang_jasa";
   return "tak_terklasifikasi";
 }
@@ -348,7 +357,9 @@ function parseTable(rows) {
   }
   const rincian = Object.values(groups).sort((a, b) => b.total - a.total);
 
-  const totalModal = rincian.filter((g) => g.kategori === "modal").reduce((s, g) => s + g.total, 0);
+  const totalModalPeralatanMesin = rincian.filter((g) => g.kategori === "modal_peralatan_mesin").reduce((s, g) => s + g.total, 0);
+  const totalModalAsetLainnya = rincian.filter((g) => g.kategori === "modal_aset_lainnya").reduce((s, g) => s + g.total, 0);
+  const totalModal = totalModalPeralatanMesin + totalModalAsetLainnya;
   const totalBarangJasa = rincian.filter((g) => g.kategori === "barang_jasa").reduce((s, g) => s + g.total, 0);
   const totalTakTerklasifikasi = rincian.filter((g) => g.kategori === "tak_terklasifikasi").reduce((s, g) => s + g.total, 0);
   const totalSiplahPassthrough = transaksi
@@ -359,6 +370,8 @@ function parseTable(rows) {
     transaksi,
     rincian,
     totals: {
+      totalModalPeralatanMesin,
+      totalModalAsetLainnya,
       totalModal,
       totalBarangJasa,
       totalTakTerklasifikasi,

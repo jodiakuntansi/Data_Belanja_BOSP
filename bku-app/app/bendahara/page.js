@@ -7,7 +7,8 @@ import { parseBKU, parseBKUFromPDF, CATEGORY_LABEL } from "../../lib/parseBKU";
 import { Wallet } from "lucide-react";
 
 const CATEGORY_TW = {
-  modal: "text-gold",
+  modal_peralatan_mesin: "text-gold",
+  modal_aset_lainnya: "text-blue",
   barang_jasa: "text-green",
   tak_terklasifikasi: "text-red",
 };
@@ -293,8 +294,12 @@ function UploadFlow({ sekolah, onLogout }) {
 
                 <div className="flex gap-3 mb-4 flex-wrap">
                   <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
-                    <div className="text-xs text-inksoft uppercase mb-1">Belanja modal</div>
-                    <div className="font-mono text-lg font-bold text-gold">{fmtRp(parsed.totals.totalModal)}</div>
+                    <div className="text-xs text-inksoft uppercase mb-1">Modal - Peralatan & Mesin</div>
+                    <div className="font-mono text-lg font-bold text-gold">{fmtRp(parsed.totals.totalModalPeralatanMesin)}</div>
+                  </div>
+                  <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
+                    <div className="text-xs text-inksoft uppercase mb-1">Modal - Aset Tetap Lainnya</div>
+                    <div className="font-mono text-lg font-bold text-blue">{fmtRp(parsed.totals.totalModalAsetLainnya)}</div>
                   </div>
                   <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                     <div className="text-xs text-inksoft uppercase mb-1">Belanja barang & jasa</div>

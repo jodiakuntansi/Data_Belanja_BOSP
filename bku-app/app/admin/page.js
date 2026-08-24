@@ -7,7 +7,8 @@ import { CATEGORY_LABEL } from "../../lib/parseBKU";
 import { Landmark } from "lucide-react";
 
 const CATEGORY_TW = {
-  modal: "text-gold",
+  modal_peralatan_mesin: "text-gold",
+  modal_aset_lainnya: "text-blue",
   barang_jasa: "text-green",
   tak_terklasifikasi: "text-red",
 };
@@ -56,7 +57,7 @@ function aggregateByNpsn(subs) {
         npsn: s.npsn,
         nama_sekolah: s.nama_sekolah,
         jenjang: s.jenjang,
-        totals: { totalModal: 0, totalBarangJasa: 0 },
+        totals: { totalModalPeralatanMesin: 0, totalModalAsetLainnya: 0, totalModal: 0, totalBarangJasa: 0 },
         rincianMap: {},
         integrity_ok: true,
         submitted_at: s.submitted_at,
@@ -65,6 +66,8 @@ function aggregateByNpsn(subs) {
       };
     }
     const a = map[s.npsn];
+    a.totals.totalModalPeralatanMesin += s.totals?.totalModalPeralatanMesin || 0;
+    a.totals.totalModalAsetLainnya += s.totals?.totalModalAsetLainnya || 0;
     a.totals.totalModal += s.totals?.totalModal || 0;
     a.totals.totalBarangJasa += s.totals?.totalBarangJasa || 0;
     a.integrity_ok = a.integrity_ok && !!s.integrity_ok;
@@ -227,6 +230,8 @@ function Dashboard({ password, onLogout }) {
   );
   const filtered = aggregateByNpsn(searched);
 
+  const totalModalPeralatanMesin = filtered.reduce((s, x) => s + (x.totals?.totalModalPeralatanMesin || 0), 0);
+  const totalModalAsetLainnya = filtered.reduce((s, x) => s + (x.totals?.totalModalAsetLainnya || 0), 0);
   const totalModal = filtered.reduce((s, x) => s + (x.totals?.totalModal || 0), 0);
   const totalBarangJasa = filtered.reduce((s, x) => s + (x.totals?.totalBarangJasa || 0), 0);
   const submittedNpsns = new Set(filtered.map((s) => s.npsn));
@@ -238,6 +243,8 @@ function Dashboard({ password, onLogout }) {
     return {
       jenjang,
       schools,
+      totalModalPeralatanMesin: schools.reduce((s, x) => s + (x.totals?.totalModalPeralatanMesin || 0), 0),
+      totalModalAsetLainnya: schools.reduce((s, x) => s + (x.totals?.totalModalAsetLainnya || 0), 0),
       totalModal: schools.reduce((s, x) => s + (x.totals?.totalModal || 0), 0),
       totalBarangJasa: schools.reduce((s, x) => s + (x.totals?.totalBarangJasa || 0), 0),
       belum: roster.filter((r) => r.jenjang === jenjang && !submittedNpsns.has(r.npsn)),
@@ -267,10 +274,17 @@ function Dashboard({ password, onLogout }) {
     for (const jenjang of JENJANG_ORDER) {
       const jg = jenjangGroups.find((j) => j.jenjang === jenjang);
       const rows = [
-        ["Nama Sekolah", "NPSN", "Bulan", "Belanja Modal", "Belanja Barang & Jasa"],
+        ["Nama Sekolah", "NPSN", "Bulan", "Belanja Modal - Peralatan & Mesin", "Belanja Modal - Aset Tetap Lainnya", "Belanja Barang & Jasa"],
         ...(jg ? jg.schools : [])
           .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""))
-          .map((s) => [s.nama_sekolah, s.npsn, (s.bulanList || []).join(", "), s.totals?.totalModal || 0, s.totals?.totalBarangJasa || 0]),
+          .map((s) => [
+            s.nama_sekolah,
+            s.npsn,
+            (s.bulanList || []).join(", "),
+            s.totals?.totalModalPeralatanMesin || 0,
+            s.totals?.totalModalAsetLainnya || 0,
+            s.totals?.totalBarangJasa || 0,
+          ]),
       ];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), JENJANG_SHEET_NAME[jenjang]);
     }
@@ -406,8 +420,12 @@ function Dashboard({ password, onLogout }) {
                 <div className="font-mono text-lg font-bold text-ink">{filtered.length}{roster.length ? ` / ${roster.length}` : ""}</div>
               </div>
               <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
-                <div className="text-xs text-inksoft uppercase mb-1">Total belanja modal</div>
-                <div className="font-mono text-lg font-bold text-gold">{fmtRp(totalModal)}</div>
+                <div className="text-xs text-inksoft uppercase mb-1">Modal - Peralatan & Mesin</div>
+                <div className="font-mono text-lg font-bold text-gold">{fmtRp(totalModalPeralatanMesin)}</div>
+              </div>
+              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
+                <div className="text-xs text-inksoft uppercase mb-1">Modal - Aset Tetap Lainnya</div>
+                <div className="font-mono text-lg font-bold text-blue">{fmtRp(totalModalAsetLainnya)}</div>
               </div>
               <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                 <div className="text-xs text-inksoft uppercase mb-1">Total belanja barang & jasa</div>
@@ -417,21 +435,22 @@ function Dashboard({ password, onLogout }) {
 
             <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
               <div className="font-extrabold text-ink mb-3">Ringkasan per jenjang</div>
-              <div className="grid grid-cols-[1fr_80px_110px_110px_70px] text-xs text-inksoft uppercase pb-2 border-b border-border">
-                <span>Jenjang</span><span className="text-right">Sekolah</span><span className="text-right">Modal</span><span className="text-right">Barang & jasa</span><span className="text-right">Belum</span>
+              <div className="grid grid-cols-[1fr_70px_110px_110px_110px_70px] text-xs text-inksoft uppercase pb-2 border-b border-border">
+                <span>Jenjang</span><span className="text-right">Sekolah</span><span className="text-right">Modal-PM</span><span className="text-right">Modal-ATL</span><span className="text-right">Barang & jasa</span><span className="text-right">Belum</span>
               </div>
               {jenjangGroups.map((jg) => (
                 <div key={jg.jenjang}>
                   <div
                     onClick={() => setExpandedJenjang((j) => (j === jg.jenjang ? null : jg.jenjang))}
-                    className="grid grid-cols-[1fr_80px_110px_110px_70px] items-center text-sm py-2 border-b border-border last:border-0 cursor-pointer hover:bg-paper"
+                    className="grid grid-cols-[1fr_70px_110px_110px_110px_70px] items-center text-sm py-2 border-b border-border last:border-0 cursor-pointer hover:bg-paper"
                   >
                     <span className="font-semibold text-ink flex items-center gap-1">
                       <span className="text-inksoft text-xs">{expandedJenjang === jg.jenjang ? "▾" : "▸"}</span>
                       {jg.jenjang}
                     </span>
                     <span className="text-right text-inksoft">{jg.schools.length}{jg.rosterCount ? ` / ${jg.rosterCount}` : ""}</span>
-                    <span className="text-right font-mono text-gold">{fmtRp(jg.totalModal)}</span>
+                    <span className="text-right font-mono text-gold">{fmtRp(jg.totalModalPeralatanMesin)}</span>
+                    <span className="text-right font-mono text-blue">{fmtRp(jg.totalModalAsetLainnya)}</span>
                     <span className="text-right font-mono text-green">{fmtRp(jg.totalBarangJasa)}</span>
                     <span className={`text-right font-semibold ${jg.belum.length ? "text-red" : "text-green"}`}>{jg.rosterCount ? jg.belum.length : "–"}</span>
                   </div>
@@ -519,14 +538,19 @@ function Dashboard({ password, onLogout }) {
                     {jg.schools.length === 0 ? (
                       <div className="text-sm text-inksoft">Belum ada submisi {jg.jenjang} untuk periode ini.</div>
                     ) : (
-                      jg.schools.sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || "")).map((s) => (
+                      <>
+                        <div className="grid grid-cols-[1fr_95px_95px_95px_60px] text-[11px] text-inksoft uppercase pb-1 border-b border-border">
+                          <span>Sekolah</span><span className="text-right">Modal-PM</span><span className="text-right">Modal-ATL</span><span className="text-right">Barang & jasa</span><span className="text-right">Valid</span>
+                        </div>
+                      {jg.schools.sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || "")).map((s) => (
                         <div key={s.npsn}>
                           <div
                             onClick={() => setExpandedRow((r) => (r === s.npsn ? null : s.npsn))}
-                            className="grid grid-cols-[1fr_110px_110px_70px] items-center text-sm py-2 border-b border-border cursor-pointer"
+                            className="grid grid-cols-[1fr_95px_95px_95px_60px] items-center text-sm py-2 border-b border-border cursor-pointer"
                           >
                             <span className="text-ink">{s.nama_sekolah} <span className="text-inksoft text-xs">({s.npsn})</span></span>
-                            <span className="text-right font-mono text-gold">{fmtRp(s.totals?.totalModal)}</span>
+                            <span className="text-right font-mono text-gold">{fmtRp(s.totals?.totalModalPeralatanMesin)}</span>
+                            <span className="text-right font-mono text-blue">{fmtRp(s.totals?.totalModalAsetLainnya)}</span>
                             <span className="text-right font-mono text-green">{fmtRp(s.totals?.totalBarangJasa)}</span>
                             <span className={`text-center ${s.integrity_ok ? "text-green" : "text-red"}`}>{s.integrity_ok ? "✓" : "!"}</span>
                           </div>
@@ -545,7 +569,8 @@ function Dashboard({ password, onLogout }) {
                             </div>
                           )}
                         </div>
-                      ))
+                      ))}
+                      </>
                     )}
                   </div>
                 ))
