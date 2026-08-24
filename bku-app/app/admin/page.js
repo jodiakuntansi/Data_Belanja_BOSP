@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
-import { CATEGORY_LABEL } from "../../lib/parseBKU";
+import { CATEGORY_LABEL, classifyKode, getUraian } from "../../lib/parseBKU";
 import { Landmark } from "lucide-react";
 
 const CATEGORY_TW = {
@@ -57,7 +57,6 @@ function aggregateByNpsn(subs) {
         npsn: s.npsn,
         nama_sekolah: s.nama_sekolah,
         jenjang: s.jenjang,
-        totals: { totalModalPeralatanMesin: 0, totalModalAsetLainnya: 0, totalModal: 0, totalBarangJasa: 0 },
         rincianMap: {},
         integrity_ok: true,
         submitted_at: s.submitted_at,
@@ -66,28 +65,40 @@ function aggregateByNpsn(subs) {
       };
     }
     const a = map[s.npsn];
-    a.totals.totalModalPeralatanMesin += s.totals?.totalModalPeralatanMesin || 0;
-    a.totals.totalModalAsetLainnya += s.totals?.totalModalAsetLainnya || 0;
-    a.totals.totalModal += s.totals?.totalModal || 0;
-    a.totals.totalBarangJasa += s.totals?.totalBarangJasa || 0;
     a.integrity_ok = a.integrity_ok && !!s.integrity_ok;
     if (new Date(s.submitted_at) > new Date(a.submitted_at)) a.submitted_at = s.submitted_at;
     a.bulanList.push(s.bulan);
     if (s.file_name) a.file_names.push(s.file_name);
     for (const g of s.rincian || []) {
+      // Re-derive kategori/uraian from the stored kode rekening itself
+      // rather than trusting whatever label was cached at submit time —
+      // this way, older submissions automatically follow the current
+      // classification rules (e.g. after a rule change) with no need
+      // to re-upload anything.
+      const kategori = classifyKode(g.kode);
       if (!a.rincianMap[g.kode]) {
-        a.rincianMap[g.kode] = { kode: g.kode, kategori: g.kategori, uraian: g.uraian, total: 0, jumlahTransaksi: 0 };
+        a.rincianMap[g.kode] = { kode: g.kode, kategori, uraian: getUraian(g.kode) || g.uraian, total: 0, jumlahTransaksi: 0 };
       }
       a.rincianMap[g.kode].total += g.total;
       a.rincianMap[g.kode].jumlahTransaksi += g.jumlahTransaksi;
     }
   }
   return Object.values(map)
-    .map((a) => ({
-      ...a,
-      rincian: Object.values(a.rincianMap).sort((x, y) => y.total - x.total),
-      bulanList: a.bulanList.sort((x, y) => (BULAN_ORDER[x] || 99) - (BULAN_ORDER[y] || 99)),
-    }))
+    .map((a) => {
+      const rincian = Object.values(a.rincianMap).sort((x, y) => y.total - x.total);
+      const totals = {
+        totalModalPeralatanMesin: rincian.filter((g) => g.kategori === "modal_peralatan_mesin").reduce((s, g) => s + g.total, 0),
+        totalModalAsetLainnya: rincian.filter((g) => g.kategori === "modal_aset_lainnya").reduce((s, g) => s + g.total, 0),
+        totalBarangJasa: rincian.filter((g) => g.kategori === "barang_jasa").reduce((s, g) => s + g.total, 0),
+      };
+      totals.totalModal = totals.totalModalPeralatanMesin + totals.totalModalAsetLainnya;
+      return {
+        ...a,
+        rincian,
+        totals,
+        bulanList: a.bulanList.sort((x, y) => (BULAN_ORDER[x] || 99) - (BULAN_ORDER[y] || 99)),
+      };
+    })
     .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""));
 }
 
