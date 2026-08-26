@@ -62,6 +62,12 @@ function aggregateByNpsn(subs) {
         submitted_at: s.submitted_at,
         bulanList: [],
         file_names: [],
+        pendapatan: 0,
+        belanjaTotal: 0,
+        saldoAwal: null,
+        saldoAwalBulanOrder: Infinity,
+        saldoAkhir: null,
+        saldoAkhirBulanOrder: -Infinity,
       };
     }
     const a = map[s.npsn];
@@ -69,6 +75,19 @@ function aggregateByNpsn(subs) {
     if (new Date(s.submitted_at) > new Date(a.submitted_at)) a.submitted_at = s.submitted_at;
     a.bulanList.push(s.bulan);
     if (s.file_name) a.file_names.push(s.file_name);
+
+    a.pendapatan += s.totals?.pendapatan || 0;
+    a.belanjaTotal += s.totals?.belanjaTotal || 0;
+    const order = BULAN_ORDER[s.bulan] || 0;
+    if (order < a.saldoAwalBulanOrder) {
+      a.saldoAwalBulanOrder = order;
+      a.saldoAwal = s.totals?.saldoAwal ?? null;
+    }
+    if (order > a.saldoAkhirBulanOrder) {
+      a.saldoAkhirBulanOrder = order;
+      a.saldoAkhir = s.totals?.saldoAkhir ?? null;
+    }
+
     for (const g of s.rincian || []) {
       // Re-derive kategori/uraian from the stored kode rekening itself
       // rather than trusting whatever label was cached at submit time —
@@ -90,6 +109,10 @@ function aggregateByNpsn(subs) {
         totalModalPeralatanMesin: rincian.filter((g) => g.kategori === "modal_peralatan_mesin").reduce((s, g) => s + g.total, 0),
         totalModalAsetLainnya: rincian.filter((g) => g.kategori === "modal_aset_lainnya").reduce((s, g) => s + g.total, 0),
         totalBarangJasa: rincian.filter((g) => g.kategori === "barang_jasa").reduce((s, g) => s + g.total, 0),
+        pendapatan: a.pendapatan,
+        belanjaTotal: a.belanjaTotal,
+        saldoAwal: a.saldoAwal,
+        saldoAkhir: a.saldoAkhir,
       };
       totals.totalModal = totals.totalModalPeralatanMesin + totals.totalModalAsetLainnya;
       return {
@@ -285,16 +308,20 @@ function Dashboard({ password, onLogout }) {
     for (const jenjang of JENJANG_ORDER) {
       const jg = jenjangGroups.find((j) => j.jenjang === jenjang);
       const rows = [
-        ["Nama Sekolah", "NPSN", "Bulan", "Belanja Modal - Peralatan & Mesin", "Belanja Modal - Aset Tetap Lainnya", "Belanja Barang & Jasa"],
+        ["Nama Sekolah", "NPSN", "Bulan", "Saldo Awal", "Pendapatan", "Belanja Modal - Peralatan & Mesin", "Belanja Modal - Aset Tetap Lainnya", "Belanja Barang & Jasa", "Belanja Total", "Saldo Akhir"],
         ...(jg ? jg.schools : [])
           .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""))
           .map((s) => [
             s.nama_sekolah,
             s.npsn,
             (s.bulanList || []).join(", "),
+            s.totals?.saldoAwal ?? 0,
+            s.totals?.pendapatan ?? 0,
             s.totals?.totalModalPeralatanMesin || 0,
             s.totals?.totalModalAsetLainnya || 0,
             s.totals?.totalBarangJasa || 0,
+            s.totals?.belanjaTotal ?? 0,
+            s.totals?.saldoAkhir ?? 0,
           ]),
       ];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), JENJANG_SHEET_NAME[jenjang]);
@@ -567,6 +594,24 @@ function Dashboard({ password, onLogout }) {
                           </div>
                           {expandedRow === s.npsn && (
                             <div className="pl-3 py-2 text-xs text-inksoft">
+                              <div className="grid grid-cols-4 gap-2 mb-3 pb-3 border-b border-border">
+                                <div>
+                                  <div className="text-[10px] uppercase">Saldo Awal</div>
+                                  <div className="font-mono font-semibold text-ink">{fmtRp(s.totals?.saldoAwal)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] uppercase">Pendapatan</div>
+                                  <div className="font-mono font-semibold text-green">+{fmtRp(s.totals?.pendapatan)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] uppercase">Belanja</div>
+                                  <div className="font-mono font-semibold text-red">-{fmtRp(s.totals?.belanjaTotal)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] uppercase">Saldo Akhir</div>
+                                  <div className="font-mono font-semibold text-ink">{fmtRp(s.totals?.saldoAkhir)}</div>
+                                </div>
+                              </div>
                               {(s.rincian || []).map((g) => (
                                 <div key={g.kode} className="py-1 border-b border-border last:border-0">
                                   <div className="flex justify-between">
