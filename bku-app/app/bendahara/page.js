@@ -292,6 +292,28 @@ function UploadFlow({ sekolah, onLogout }) {
                   <Stamp ok={parsed.integrityOk} />
                 </div>
 
+                <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+                  <div className="text-xs text-inksoft uppercase mb-3">Ringkasan arus kas</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <div className="text-[11px] text-inksoft uppercase">Saldo Awal</div>
+                      <div className="font-mono text-sm font-bold text-ink">{fmtRp(parsed.totals.saldoAwal)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-inksoft uppercase">Pendapatan</div>
+                      <div className="font-mono text-sm font-bold text-green">+{fmtRp(parsed.totals.pendapatan)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-inksoft uppercase">Belanja</div>
+                      <div className="font-mono text-sm font-bold text-red">-{fmtRp(parsed.totals.belanjaTotal)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-inksoft uppercase">Saldo Akhir</div>
+                      <div className="font-mono text-sm font-bold text-ink">{fmtRp(parsed.totals.saldoAkhir)}</div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex gap-3 mb-4 flex-wrap">
                   <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                     <div className="text-xs text-inksoft uppercase mb-1">Modal - Peralatan & Mesin</div>
