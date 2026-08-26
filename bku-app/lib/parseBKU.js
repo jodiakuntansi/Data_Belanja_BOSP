@@ -366,6 +366,21 @@ function parseTable(rows) {
     .filter((t) => isSiplahPassthrough(t.uraian) && t.pengeluaran > 0)
     .reduce((s, t) => s + t.pengeluaran, 0);
 
+  // Cash-flow overview: "Saldo Bank/Tunai Bulan X" rows carry the prior
+  // month's closing balance forward as if it were income — that's Saldo
+  // Awal, not real Pendapatan. Pass-through transactions (SIPLah, PPh
+  // withholding, or anything else with no bukti) are excluded from both
+  // Pendapatan and Belanja here, same as everywhere else in the app —
+  // since a matching pass-through pair always nets to zero, excluding
+  // both sides still keeps the books balanced: Saldo Awal + Pendapatan
+  // - Belanja = Saldo Akhir.
+  const saldoAwal = transaksi
+    .filter((t) => /^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian))
+    .reduce((s, t) => s + t.penerimaan, 0);
+  const pendapatan = transaksi.filter((t) => !t.excluded).reduce((s, t) => s + t.penerimaan, 0);
+  const belanjaTotal = transaksi.filter((t) => !t.excluded).reduce((s, t) => s + t.pengeluaran, 0);
+  const saldoAkhir = jumlahRow ? jumlahRow.saldo : saldoAwal + pendapatan - belanjaTotal;
+
   return {
     transaksi,
     rincian,
@@ -377,6 +392,10 @@ function parseTable(rows) {
       totalTakTerklasifikasi,
       totalSiplahPassthrough,
       totalBelanjaTerklasifikasi: totalModal + totalBarangJasa + totalTakTerklasifikasi,
+      saldoAwal,
+      pendapatan,
+      belanjaTotal,
+      saldoAkhir,
       totalPengeluaranFile: jumlahRow ? jumlahRow.pengeluaran : null,
       totalPenerimaanFile: jumlahRow ? jumlahRow.penerimaan : null,
       saldoAkhirFile: jumlahRow ? jumlahRow.saldo : null,
