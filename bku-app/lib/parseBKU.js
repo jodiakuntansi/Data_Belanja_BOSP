@@ -50,6 +50,19 @@ function isSiplahPassthrough(uraian) {
   return (u.startsWith("terima") || u.startsWith("setor")) && u.includes("siplah");
 }
 
+// Broader than isSiplahPassthrough: catches any income that's really just
+// money passing straight back out (SIPLah top-ups, PPh/tax withheld from
+// an honorarium then remitted to the state) so it can be excluded from
+// Pendapatan. This is intentionally NOT based on missing kode rekening /
+// No. Bukti — genuine income rows (BOSP disbursements, grants, bank
+// interest) also lack those, since bukti numbers are for expenditures,
+// not incoming transfers, and should still count as real Pendapatan.
+function isPassThroughIncome(uraian) {
+  if (!uraian) return false;
+  const u = uraian.trim().toLowerCase();
+  return u.includes("siplah") || /\bpph\b/.test(u) || /\bpajak\b/.test(u);
+}
+
 function cellStr(v) {
   return v === undefined || v === null ? "" : String(v);
 }
@@ -377,7 +390,9 @@ function parseTable(rows) {
   const saldoAwal = transaksi
     .filter((t) => /^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian))
     .reduce((s, t) => s + t.penerimaan, 0);
-  const pendapatan = transaksi.filter((t) => !t.excluded).reduce((s, t) => s + t.penerimaan, 0);
+  const pendapatan = transaksi
+    .filter((t) => t.penerimaan > 0 && !/^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian) && !isPassThroughIncome(t.uraian))
+    .reduce((s, t) => s + t.penerimaan, 0);
   const belanjaTotal = transaksi.filter((t) => !t.excluded).reduce((s, t) => s + t.pengeluaran, 0);
   const saldoAkhir = jumlahRow ? jumlahRow.saldo : saldoAwal + pendapatan - belanjaTotal;
 
