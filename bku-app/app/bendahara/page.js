@@ -171,6 +171,7 @@ function UploadFlow({ sekolah, onLogout }) {
   const [fileName, setFileName] = useState("");
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState(null);
+  const [sumberDana, setSumberDana] = useState("REGULER");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -195,14 +196,18 @@ function UploadFlow({ sekolah, onLogout }) {
         if (!res.ok || data.error) {
           setParsed({ errors: ["Gagal membaca PDF: " + (data.error || "tidak diketahui")], ok: false, totals: null, rincian: [] });
         } else {
-          setParsed(parseBKUFromPDF(data));
+          const result = parseBKUFromPDF(data);
+          setParsed(result);
+          setSumberDana(result.sumberDana || "REGULER");
         }
       } else {
         const buf = await f.arrayBuffer();
         const wb = XLSX.read(buf, { type: "array", cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-        setParsed(parseBKU(rows));
+        const result = parseBKU(rows);
+        setParsed(result);
+        setSumberDana(result.sumberDana || "REGULER");
       }
     } catch (e) {
       setParsed({ errors: ["Gagal membaca file: " + e.message], ok: false, totals: null, rincian: [] });
@@ -223,6 +228,7 @@ function UploadFlow({ sekolah, onLogout }) {
           pin: sekolah.pin,
           tahun: parsed.tahun,
           bulan: parsed.bulan,
+          sumberDana,
           totals: parsed.totals,
           rincian: parsed.rincian,
           integrityOk: parsed.integrityOk,
@@ -290,6 +296,33 @@ function UploadFlow({ sekolah, onLogout }) {
                     <div className="text-xs text-inksoft">{parsed.bulan} {parsed.tahun}</div>
                   </div>
                   <Stamp ok={parsed.integrityOk} />
+                </div>
+
+                <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+                  <label className="text-xs text-inksoft uppercase block mb-2">Sumber Dana</label>
+                  <div className="flex gap-2">
+                    {["REGULER", "KINERJA"].map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => {
+                          setSumberDana(opt);
+                          setSaved(false);
+                          setSaveError("");
+                        }}
+                        className={`flex-1 rounded-xl py-2 text-sm font-semibold border transition ${
+                          sumberDana === opt ? "gradient-hero text-white border-transparent" : "border-border text-inksoft bg-white"
+                        }`}
+                      >
+                        BOSP {opt === "REGULER" ? "Reguler" : "Kinerja"}
+                      </button>
+                    ))}
+                  </div>
+                  {parsed.sumberDanaRaw && (
+                    <div className="text-[11px] text-inksoft mt-2">
+                      Terdeteksi dari file: "{parsed.sumberDanaRaw}". Betulkan di atas kalau salah.
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">

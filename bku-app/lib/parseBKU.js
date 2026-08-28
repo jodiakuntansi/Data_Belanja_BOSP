@@ -140,8 +140,16 @@ export function parseBKU(rows) {
 // Used for the PDF path: header info comes pre-extracted from the server
 // (see app/api/parse-pdf/route.js), only the transaction table itself
 // needs the shared row-parsing logic below.
-export function parseBKUFromPDF({ npsn, namaSekolah, alamat, bulan, tahun, rows }) {
-  const header = { npsn: npsn || "", namaSekolah: namaSekolah || "", alamat: alamat || "", bulan: bulan || "", tahun: tahun || "" };
+export function parseBKUFromPDF({ npsn, namaSekolah, alamat, bulan, tahun, sumberDana, sumberDanaRaw, rows }) {
+  const header = {
+    npsn: npsn || "",
+    namaSekolah: namaSekolah || "",
+    alamat: alamat || "",
+    bulan: bulan || "",
+    tahun: tahun || "",
+    sumberDana: sumberDana || "REGULER",
+    sumberDanaRaw: sumberDanaRaw || "",
+  };
   const table = parseTable(rows);
   return buildResult(header, table);
 }
@@ -169,6 +177,27 @@ function extractHeaderInfo(rows) {
   let alamat = "";
   let bulan = "";
   let tahun = "";
+  let sumberDana = "REGULER";
+  let sumberDanaRaw = "";
+
+  // "Sumber Dana" can appear anywhere in the header block (same cell as
+  // other fields, or its own row/cell) — scan broadly rather than
+  // assuming a fixed position, same approach as the other header fields.
+  outerSumberDana: for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const r = rows[i] || [];
+    for (const v of r) {
+      const s = cellStr(v);
+      if (!s) continue;
+      for (const line of s.split("\n")) {
+        const m = line.match(/Sumber Dana\s*:\s*(.+)/i);
+        if (m && m[1].trim()) {
+          sumberDanaRaw = m[1].trim();
+          sumberDana = /kinerja/i.test(sumberDanaRaw) ? "KINERJA" : "REGULER";
+          break outerSumberDana;
+        }
+      }
+    }
+  }
 
   const row0 = rows[0] || [];
   for (const v of row0) {
@@ -266,7 +295,7 @@ function extractHeaderInfo(rows) {
     }
   }
 
-  return { npsn, namaSekolah, alamat, bulan, tahun };
+  return { npsn, namaSekolah, alamat, bulan, tahun, sumberDana, sumberDanaRaw };
 }
 
 function parseTable(rows) {
@@ -387,12 +416,29 @@ function parseTable(rows) {
   // since a matching pass-through pair always nets to zero, excluding
   // both sides still keeps the books balanced: Saldo Awal + Pendapatan
   // - Belanja = Saldo Akhir.
-  const saldoAwal = transaksi
-    .filter((t) => /^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian))
+  const saldoAwalBank = transaksi
+    .filter((t) => /^Saldo\s+Bank\b/i.test(t.uraian))
     .reduce((s, t) => s + t.penerimaan, 0);
-  const pendapatan = transaksi
-    .filter((t) => t.penerimaan > 0 && !/^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian) && !isPassThroughIncome(t.uraian))
+  const saldoAwalTunai = transaksi
+    .filter((t) => /^Saldo\s+Tunai\b/i.test(t.uraian))
     .reduce((s, t) => s + t.penerimaan, 0);
+  const saldoAwal = saldoAwalBank + saldoAwalTunai;
+
+  const isRealIncomeRow = (t) => t.penerimaan > 0 && !/^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian) && !isPassThroughIncome(t.uraian);
+  const pencairanBosp = transaksi
+    .filter((t) => isRealIncomeRow(t) && /\bbosp\b/i.test(t.uraian))
+    .reduce((s, t) => s + t.penerimaan, 0);
+  const bungaBank = transaksi
+    .filter((t) => isRealIncomeRow(t) && /bunga\s*bank|jasa\s*giro/i.test(t.uraian))
+    .reduce((s, t) => s + t.penerimaan, 0);
+  const potonganPajak = transaksi
+    .filter((t) => t.penerimaan > 0 && !/^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian) && isPassThroughIncome(t.uraian))
+    .reduce((s, t) => s + t.penerimaan, 0);
+  const pendapatanLain = transaksi
+    .filter((t) => isRealIncomeRow(t) && !/\bbosp\b/i.test(t.uraian) && !/bunga\s*bank|jasa\s*giro/i.test(t.uraian))
+    .reduce((s, t) => s + t.penerimaan, 0);
+  const pendapatan = pencairanBosp + bungaBank + pendapatanLain;
+  const jumlahPendapatanLengkap = pencairanBosp + bungaBank + potonganPajak + pendapatanLain;
   const belanjaTotal = transaksi.filter((t) => !t.excluded).reduce((s, t) => s + t.pengeluaran, 0);
   const saldoAkhir = jumlahRow ? jumlahRow.saldo : saldoAwal + pendapatan - belanjaTotal;
 
@@ -407,8 +453,15 @@ function parseTable(rows) {
       totalTakTerklasifikasi,
       totalSiplahPassthrough,
       totalBelanjaTerklasifikasi: totalModal + totalBarangJasa + totalTakTerklasifikasi,
+      saldoAwalBank,
+      saldoAwalTunai,
       saldoAwal,
+      pencairanBosp,
+      bungaBank,
+      potonganPajak,
+      pendapatanLain,
       pendapatan,
+      jumlahPendapatanLengkap,
       belanjaTotal,
       saldoAkhir,
       totalPengeluaranFile: jumlahRow ? jumlahRow.pengeluaran : null,

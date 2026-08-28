@@ -12,6 +12,8 @@ def extract_header(text):
     alamat_parts = []
     bulan = ""
     tahun = ""
+    sumber_dana_raw = ""
+    sumber_dana = "REGULER"
 
     m = re.search(r"NPSN\s*:\s*(\d{6,10})", text)
     if m:
@@ -36,7 +38,12 @@ def extract_header(text):
     if m:
         tahun = m.group(1)
 
-    return npsn, nama, ", ".join(alamat_parts), bulan, tahun
+    m = re.search(r"Sumber Dana\s*:\s*(.+)", text, re.I)
+    if m:
+        sumber_dana_raw = m.group(1).strip()
+        sumber_dana = "KINERJA" if re.search(r"kinerja", sumber_dana_raw, re.I) else "REGULER"
+
+    return npsn, nama, ", ".join(alamat_parts), bulan, tahun, sumber_dana, sumber_dana_raw
 
 
 def extract_pdf(pdf_bytes):
@@ -45,7 +52,7 @@ def extract_pdf(pdf_bytes):
             return {"error": "PDF tidak berisi halaman."}
 
         first_text = pdf.pages[0].extract_text() or ""
-        npsn, nama, alamat, bulan, tahun = extract_header(first_text)
+        npsn, nama, alamat, bulan, tahun, sumber_dana, sumber_dana_raw = extract_header(first_text)
 
         # Grid-based extraction: pdfplumber detects the table using the
         # PDF's own drawn cell borders, so column assignment is exact —
@@ -65,6 +72,8 @@ def extract_pdf(pdf_bytes):
             "alamat": alamat,
             "bulan": bulan,
             "tahun": tahun,
+            "sumberDana": sumber_dana,
+            "sumberDanaRaw": sumber_dana_raw,
             "rows": all_rows,
         }
 

@@ -198,6 +198,11 @@ function Dashboard({ password, onLogout }) {
   const [expandedRow, setExpandedRow] = useState(null);
   const [expandedJenjang, setExpandedJenjang] = useState(null);
   const [view, setView] = useState("sekolah");
+  const [rkoranMap, setRkoranMap] = useState({});
+  const [rkoranText, setRkoranText] = useState("");
+  const [editingRkoran, setEditingRkoran] = useState(false);
+  const [rkoranSaving, setRkoranSaving] = useState(false);
+  const [rkoranMsg, setRkoranMsg] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -235,6 +240,63 @@ function Dashboard({ password, onLogout }) {
   }
   const activePeriod = filterPeriod || periodOptions[0] || "";
   const period = parsePeriod(activePeriod);
+
+  const loadRkoran = useCallback(async () => {
+    if (!period || period.type !== "month") {
+      setRkoranMap({});
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/rkoran?tahun=${period.tahun}&bulan=${[...period.bulanSet][0]}`, {
+        headers: { "x-admin-password": password },
+      });
+      const data = await res.json();
+      const map = {};
+      (data.entries || []).forEach((e) => {
+        map[e.npsn] = e.saldo_rkoran;
+      });
+      setRkoranMap(map);
+      setRkoranText(Object.entries(map).map(([npsn, v]) => `${npsn}|${v}`).join("\n"));
+    } catch {
+      setRkoranMap({});
+    }
+  }, [password, activePeriod]);
+
+  useEffect(() => {
+    loadRkoran();
+  }, [loadRkoran]);
+
+  const saveRkoran = async () => {
+    if (!period || period.type !== "month") return;
+    setRkoranSaving(true);
+    setRkoranMsg("");
+    const entries = rkoranText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const [npsn, v] = l.split("|").map((p) => p.trim());
+        return { npsn, saldoRkoran: v };
+      })
+      .filter((e) => e.npsn);
+    try {
+      const res = await fetch("/api/admin/rkoran", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ tahun: period.tahun, bulan: [...period.bulanSet][0], entries }),
+      });
+      const data = await res.json();
+      if (!res.ok) setRkoranMsg(data.error || "Gagal menyimpan.");
+      else {
+        setRkoranMsg("Tersimpan.");
+        setEditingRkoran(false);
+        loadRkoran();
+      }
+    } catch {
+      setRkoranMsg("Gagal menghubungi server.");
+    }
+    setRkoranSaving(false);
+  };
 
   const rawFiltered = submissions.filter((s) => {
     if (period && (s.tahun !== period.tahun || !period.bulanSet.has(s.bulan))) return false;
@@ -301,6 +363,135 @@ function Dashboard({ password, onLogout }) {
 
   const JENJANG_SHEET_NAME = { "TK/PAUD": "TK-PAUD", SD: "SD", SMP: "SMP" };
   const periodFileTag = () => periodLabel(activePeriod).replace(/\s+/g, "-").replace(/[()–]/g, "");
+
+  // Groups a jenjang's raw (pre-aggregated) submissions by school, keeping
+  // BOSP Reguler and BOSP Kinerja spending separate (as their own belanja
+  // columns) while combining saldo/pendapatan across both — matching the
+  // official "Rekapan BOSP" report layout used by the dinas.
+  function buildOfficialRecap(subsForJenjang) {
+    const bySchool = {};
+    for (const s of subsForJenjang) {
+      if (!bySchool[s.npsn]) bySchool[s.npsn] = { npsn: s.npsn, nama_sekolah: s.nama_sekolah, subs: [] };
+      bySchool[s.npsn].subs.push(s);
+    }
+    const sum = (arr, get) => arr.reduce((acc, s) => acc + (get(s.totals || {}) || 0), 0);
+    return Object.values(bySchool)
+      .map(({ npsn, nama_sekolah, subs }) => {
+        const reguler = subs.filter((s) => (s.sumber_dana || "REGULER") === "REGULER");
+        const kinerja = subs.filter((s) => s.sumber_dana === "KINERJA");
+        const regulerBJ = sum(reguler, (t) => t.totalBarangJasa);
+        const regulerPM = sum(reguler, (t) => t.totalModalPeralatanMesin);
+        const regulerATL = sum(reguler, (t) => t.totalModalAsetLainnya);
+        const kinerjaBJ = sum(kinerja, (t) => t.totalBarangJasa);
+        const kinerjaPM = sum(kinerja, (t) => t.totalModalPeralatanMesin);
+        const kinerjaATL = sum(kinerja, (t) => t.totalModalAsetLainnya);
+        return {
+          npsn,
+          nama_sekolah,
+          saldoAwalBank: sum(subs, (t) => t.saldoAwalBank),
+          saldoAwalTunai: sum(subs, (t) => t.saldoAwalTunai),
+          pencairanBosp: sum(subs, (t) => t.pencairanBosp),
+          bungaBank: sum(subs, (t) => t.bungaBank),
+          potonganPajak: sum(subs, (t) => t.potonganPajak),
+          pendapatanLain: sum(subs, (t) => t.pendapatanLain),
+          jumlahPendapatan: sum(subs, (t) => t.jumlahPendapatanLengkap),
+          regulerBJ,
+          regulerPM,
+          regulerATL,
+          regulerJumlah: regulerBJ + regulerPM + regulerATL,
+          kinerjaBJ,
+          kinerjaPM,
+          kinerjaATL,
+          kinerjaJumlah: kinerjaBJ + kinerjaPM + kinerjaATL,
+          sisaSaldoBKU: sum(subs, (t) => t.saldoAkhir),
+        };
+      })
+      .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""));
+  }
+
+  // Official "Rekapan BOSP" export — matches the dinas's own report
+  // layout exactly (merged multi-row headers, Reguler/Kinerja split,
+  // manual Saldo R.Koran + auto Selisih). Only meaningful for a single
+  // month, since Saldo R.Koran is a specific bank-statement snapshot.
+  const exportRekapResmi = () => {
+    if (!period || period.type !== "month") {
+      alert("Pilih periode satu bulan (bukan semester/tahunan) untuk unduhan ini, karena Saldo R.Koran berupa data per tanggal tertentu.");
+      return;
+    }
+    const wb = XLSX.utils.book_new();
+    for (const jenjang of JENJANG_ORDER) {
+      const subsForJenjang = completeFiltered.filter((s) => jenjangOf(s) === jenjang);
+      const recap = buildOfficialRecap(subsForJenjang);
+
+      const title = `REKAPAN BOSP JENJANG ${jenjang === "TK/PAUD" ? "TK/PAUD" : jenjang} SE-KABUPATEN GIANYAR ${periodLabel(activePeriod).toUpperCase()}`;
+      const headerRow1 = [title];
+      const headerRow2 = ["No", "Nama Sekolah", "Saldo Awal", "", "Penambahan", "", "", "", "", "BOSP REGULER", "", "", "", "BOSP KINERJA", "", "", "", "Saldo Akhir", "", ""];
+      const headerRow3 = [
+        "", "", "Saldo di Arkas", "Tunai",
+        "Pencairan Dana BOSP", "Bunga Bank/Jasa Giro", "Potongan dan Pungutan Pajak", "Pendapatan Lain-lain", "Jumlah Pendapatan",
+        "Belanja Barang dan Jasa", "Belanja Modal", "", "Jumlah Belanja BOSP REGULER",
+        "Belanja Barang dan Jasa", "Belanja Modal", "", "Jumlah Belanja BOSP KINERJA",
+        "Sisa Saldo Buku Kas Umum", "Saldo R.Koran", "Selisih",
+      ];
+      const headerRow4 = ["", "", "", "", "", "", "", "", "", "", "Peralatan Mesin", "Aset Tetap Lainnya", "", "", "Peralatan Mesin", "Aset Tetap Lainnya", "", "", "", ""];
+
+      const dataRows = recap.map((r, i) => {
+        const rkoran = rkoranMap[r.npsn];
+        return [
+          i + 1,
+          r.nama_sekolah,
+          r.saldoAwalBank,
+          r.saldoAwalTunai,
+          r.pencairanBosp,
+          r.bungaBank,
+          r.potonganPajak,
+          r.pendapatanLain,
+          r.jumlahPendapatan,
+          r.regulerBJ,
+          r.regulerPM,
+          r.regulerATL,
+          r.regulerJumlah,
+          r.kinerjaBJ,
+          r.kinerjaPM,
+          r.kinerjaATL,
+          r.kinerjaJumlah,
+          r.sisaSaldoBKU,
+          rkoran ?? "",
+          rkoran != null ? r.sisaSaldoBKU - rkoran : "",
+        ];
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet([headerRow1, headerRow2, headerRow3, headerRow4, ...dataRows]);
+      ws["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 19 } },
+        { s: { r: 1, c: 0 }, e: { r: 3, c: 0 } },
+        { s: { r: 1, c: 1 }, e: { r: 3, c: 1 } },
+        { s: { r: 1, c: 2 }, e: { r: 1, c: 3 } },
+        { s: { r: 2, c: 2 }, e: { r: 3, c: 2 } },
+        { s: { r: 2, c: 3 }, e: { r: 3, c: 3 } },
+        { s: { r: 1, c: 4 }, e: { r: 1, c: 8 } },
+        { s: { r: 2, c: 4 }, e: { r: 3, c: 4 } },
+        { s: { r: 2, c: 5 }, e: { r: 3, c: 5 } },
+        { s: { r: 2, c: 6 }, e: { r: 3, c: 6 } },
+        { s: { r: 2, c: 7 }, e: { r: 3, c: 7 } },
+        { s: { r: 2, c: 8 }, e: { r: 3, c: 8 } },
+        { s: { r: 1, c: 9 }, e: { r: 1, c: 12 } },
+        { s: { r: 2, c: 9 }, e: { r: 3, c: 9 } },
+        { s: { r: 2, c: 10 }, e: { r: 2, c: 11 } },
+        { s: { r: 2, c: 12 }, e: { r: 3, c: 12 } },
+        { s: { r: 1, c: 13 }, e: { r: 1, c: 16 } },
+        { s: { r: 2, c: 13 }, e: { r: 3, c: 13 } },
+        { s: { r: 2, c: 14 }, e: { r: 2, c: 15 } },
+        { s: { r: 2, c: 16 }, e: { r: 3, c: 16 } },
+        { s: { r: 1, c: 17 }, e: { r: 1, c: 19 } },
+        { s: { r: 2, c: 17 }, e: { r: 3, c: 17 } },
+        { s: { r: 2, c: 18 }, e: { r: 3, c: 18 } },
+        { s: { r: 2, c: 19 }, e: { r: 3, c: 19 } },
+      ];
+      XLSX.utils.book_append_sheet(wb, ws, JENJANG_SHEET_NAME[jenjang]);
+    }
+    XLSX.writeFile(wb, `Rekapan-BOSP-Resmi-${periodFileTag()}.xlsx`);
+  };
 
   // File 1: total belanja modal & barang/jasa per sekolah, satu sheet per jenjang.
   const exportRekapTotal = () => {
@@ -446,6 +637,14 @@ function Dashboard({ password, onLogout }) {
           >
             ⬇ Status Submit
           </button>
+          <button
+            onClick={exportRekapResmi}
+            disabled={completeFiltered.length === 0}
+            className="text-xs text-white bg-blue rounded-xl px-3 py-2 font-semibold disabled:opacity-40"
+            title="Hanya untuk periode satu bulan"
+          >
+            ⬇ Rekapan BOSP Resmi
+          </button>
         </div>
 
         {loading ? (
@@ -528,6 +727,40 @@ function Dashboard({ password, onLogout }) {
                   )}
                 </div>
               ))}
+            </div>
+
+            <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <div>
+                  <div className="font-extrabold text-ink">Saldo R.Koran</div>
+                  <div className="text-xs text-inksoft">Diisi manual dari rekening koran bank — dipakai untuk hitung Selisih di Rekapan BOSP Resmi.</div>
+                </div>
+                {period?.type === "month" && (
+                  <button onClick={() => setEditingRkoran((v) => !v)} className="text-xs border border-border rounded-xl px-3 py-1.5 text-inksoft shrink-0">
+                    {editingRkoran ? "Batal" : "Kelola"}
+                  </button>
+                )}
+              </div>
+              {period?.type !== "month" ? (
+                <div className="text-sm text-inksoft">Pilih periode satu bulan untuk mengisi Saldo R.Koran.</div>
+              ) : editingRkoran ? (
+                <div>
+                  <div className="text-xs text-inksoft mb-2">Satu sekolah per baris: <code className="font-mono">NPSN|Saldo R.Koran</code></div>
+                  <textarea
+                    value={rkoranText}
+                    onChange={(e) => setRkoranText(e.target.value)}
+                    rows={8}
+                    className="w-full font-mono text-xs border border-border rounded-xl p-2"
+                    placeholder={"50104137|16215000"}
+                  />
+                  {rkoranMsg && <div className="text-sm text-inksoft mt-2">{rkoranMsg}</div>}
+                  <button onClick={saveRkoran} disabled={rkoranSaving} className="mt-2 bg-ink text-white rounded-xl px-4 py-2 text-sm font-semibold">
+                    {rkoranSaving ? "Menyimpan..." : "Simpan"}
+                  </button>
+                </div>
+              ) : (
+                <div className="text-sm text-inksoft">{Object.keys(rkoranMap).length} sekolah sudah diisi untuk periode ini.</div>
+              )}
             </div>
 
             <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">

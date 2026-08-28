@@ -3,7 +3,7 @@ import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
 export async function POST(req) {
   const body = await req.json();
-  const { npsn, pin, tahun, bulan, totals, rincian, integrityOk, fileName } = body;
+  const { npsn, pin, tahun, bulan, sumberDana, totals, rincian, integrityOk, fileName } = body;
 
   if (!npsn || !pin || !tahun || !bulan || !totals) {
     return NextResponse.json({ error: "Data tidak lengkap." }, { status: 400 });
@@ -31,13 +31,14 @@ export async function POST(req) {
       jenjang: sekolah.jenjang,
       tahun,
       bulan,
+      sumber_dana: sumberDana === "KINERJA" ? "KINERJA" : "REGULER",
       totals,
       rincian,
       integrity_ok: !!integrityOk,
       file_name: fileName || null,
       submitted_at: new Date().toISOString(),
     },
-    { onConflict: "npsn,tahun,bulan" }
+    { onConflict: "npsn,tahun,bulan,sumber_dana" }
   );
 
   if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 });
