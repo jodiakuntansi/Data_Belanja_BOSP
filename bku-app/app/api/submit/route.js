@@ -3,7 +3,7 @@ import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
 export async function POST(req) {
   const body = await req.json();
-  const { npsn, pin, tahun, bulan, sumberDana, totals, rincian, integrityOk, fileName } = body;
+  const { npsn, pin, tahun, bulan, sumberDana, saldoRkoran, totals, rincian, integrityOk, fileName } = body;
 
   if (!npsn || !pin || !tahun || !bulan || !totals) {
     return NextResponse.json({ error: "Data tidak lengkap." }, { status: 400 });
@@ -42,6 +42,28 @@ export async function POST(req) {
   );
 
   if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 });
+
+  // Saldo R.Koran is one value per school per month (the physical bank
+  // account, shared across Reguler/Kinerja) — only touch it when the
+  // bendahara actually filled it in, so submitting one sumber dana
+  // without it doesn't wipe out a value already entered via the other.
+  if (saldoRkoran !== undefined && saldoRkoran !== null && saldoRkoran !== "" && !isNaN(Number(saldoRkoran))) {
+    const { error: rkoranErr } = await supabase.from("saldo_rkoran").upsert(
+      {
+        npsn,
+        tahun,
+        bulan,
+        saldo_rkoran: Number(saldoRkoran),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "npsn,tahun,bulan" }
+    );
+    if (rkoranErr) {
+      // Don't fail the whole submission over this — the BKU data itself
+      // is already saved successfully above.
+      return NextResponse.json({ ok: true, rkoranWarning: rkoranErr.message });
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }
