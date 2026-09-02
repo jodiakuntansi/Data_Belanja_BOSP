@@ -172,6 +172,7 @@ function UploadFlow({ sekolah, onLogout }) {
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState(null);
   const [sumberDana, setSumberDana] = useState("REGULER");
+  const [saldoRkoran, setSaldoRkoran] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -181,6 +182,7 @@ function UploadFlow({ sekolah, onLogout }) {
     setParsed(null);
     setSaved(false);
     setSaveError("");
+    setSaldoRkoran("");
     setParsing(true);
     try {
       const isPdf = f.name.toLowerCase().endsWith(".pdf");
@@ -229,6 +231,7 @@ function UploadFlow({ sekolah, onLogout }) {
           tahun: parsed.tahun,
           bulan: parsed.bulan,
           sumberDana,
+          saldoRkoran,
           totals: parsed.totals,
           rincian: parsed.rincian,
           integrityOk: parsed.integrityOk,
@@ -344,6 +347,26 @@ function UploadFlow({ sekolah, onLogout }) {
                       <div className="text-[11px] text-inksoft uppercase">Saldo Akhir</div>
                       <div className="font-mono text-sm font-bold text-ink">{fmtRp(parsed.totals.saldoAkhir)}</div>
                     </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <label className="text-[11px] text-inksoft uppercase block mb-1.5">Saldo R.Koran (dari rekening koran bank bulan ini)</label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={saldoRkoran}
+                      onChange={(e) => setSaldoRkoran(e.target.value)}
+                      placeholder="Contoh: 16215000"
+                      className="w-full max-w-xs rounded-xl px-3 py-2.5 text-sm bg-white border border-border focus:border-blue outline-none transition"
+                    />
+                    {saldoRkoran !== "" && !isNaN(Number(saldoRkoran)) && (
+                      <div className="text-xs mt-2">
+                        Selisih dengan Saldo Akhir BKU:{" "}
+                        <span className={`font-mono font-bold ${parsed.totals.saldoAkhir - Number(saldoRkoran) === 0 ? "text-green" : "text-red"}`}>
+                          {fmtRp(parsed.totals.saldoAkhir - Number(saldoRkoran))}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
