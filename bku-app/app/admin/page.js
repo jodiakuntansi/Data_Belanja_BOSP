@@ -733,7 +733,7 @@ function Dashboard({ password, onLogout }) {
               <div className="flex justify-between items-center mb-2">
                 <div>
                   <div className="font-extrabold text-ink">Saldo R.Koran</div>
-                  <div className="text-xs text-inksoft">Diisi manual dari rekening koran bank — dipakai untuk hitung Selisih di Rekapan BOSP Resmi.</div>
+                  <div className="text-xs text-inksoft">Otomatis terisi saat bendahara mengisi di halaman upload — menu ini untuk koreksi manual kalau diperlukan.</div>
                 </div>
                 {period?.type === "month" && (
                   <button onClick={() => setEditingRkoran((v) => !v)} className="text-xs border border-border rounded-xl px-3 py-1.5 text-inksoft shrink-0">
