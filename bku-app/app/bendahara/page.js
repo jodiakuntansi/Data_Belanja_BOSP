@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import Link from "next/link";
-import { parseBKU, parseBKUFromPDF, CATEGORY_LABEL } from "../../lib/parseBKU";
-import { Wallet } from "lucide-react";
+import { parseBKU, parseBKUFromPDF, CATEGORY_LABEL, classifyKode, getUraian } from "../../lib/parseBKU";
+import { Wallet, Plus, X } from "lucide-react";
 
 const CATEGORY_TW = {
   modal_peralatan_mesin: "text-gold",
@@ -15,6 +15,59 @@ const CATEGORY_TW = {
 
 function fmtRp(n) {
   return "Rp " + Math.round(n || 0).toLocaleString("id-ID");
+}
+
+// Applies manually-entered "pengembalian belanja" corrections: each entry
+// reduces the total under its kode rekening (the correction isn't visible
+// as a labeled row in the BKU itself, so the bendahara enters it directly
+// rather than the system trying to detect it). The classified category
+// totals (Modal/Barang & Jasa) are recomputed from the adjusted rincian
+// so budget reporting reflects the correction; Saldo Awal/Pendapatan/
+// Belanja/Saldo Akhir from the file itself are left untouched — Koreksi
+// is shown as its own transparent line instead of being folded in.
+function applyKoreksi(parsed, koreksiList) {
+  if (!parsed?.totals || koreksiList.length === 0) return parsed;
+
+  const rincianMap = {};
+  for (const g of parsed.rincian) rincianMap[g.kode] = { ...g };
+
+  for (const k of koreksiList) {
+    if (!k.kode || !k.nominal) continue;
+    const nominal = Number(k.nominal) || 0;
+    if (!rincianMap[k.kode]) {
+      rincianMap[k.kode] = {
+        kode: k.kode,
+        kategori: classifyKode(k.kode),
+        uraian: getUraian(k.kode),
+        jumlahTransaksi: 0,
+        total: 0,
+      };
+    }
+    rincianMap[k.kode].total -= nominal;
+  }
+
+  const rincian = Object.values(rincianMap).sort((a, b) => b.total - a.total);
+  const totalModalPeralatanMesin = rincian.filter((g) => g.kategori === "modal_peralatan_mesin").reduce((s, g) => s + g.total, 0);
+  const totalModalAsetLainnya = rincian.filter((g) => g.kategori === "modal_aset_lainnya").reduce((s, g) => s + g.total, 0);
+  const totalBarangJasa = rincian.filter((g) => g.kategori === "barang_jasa").reduce((s, g) => s + g.total, 0);
+  const totalTakTerklasifikasi = rincian.filter((g) => g.kategori === "tak_terklasifikasi").reduce((s, g) => s + g.total, 0);
+  const koreksiTotal = koreksiList.reduce((s, k) => s + (Number(k.nominal) || 0), 0);
+
+  return {
+    ...parsed,
+    rincian,
+    totals: {
+      ...parsed.totals,
+      totalModalPeralatanMesin,
+      totalModalAsetLainnya,
+      totalModal: totalModalPeralatanMesin + totalModalAsetLainnya,
+      totalBarangJasa,
+      totalTakTerklasifikasi,
+      totalBelanjaTerklasifikasi: totalModalPeralatanMesin + totalModalAsetLainnya + totalBarangJasa + totalTakTerklasifikasi,
+      koreksiTotal,
+      koreksiList,
+    },
+  };
 }
 
 function Stamp({ ok }) {
@@ -173,6 +226,7 @@ function UploadFlow({ sekolah, onLogout }) {
   const [parsed, setParsed] = useState(null);
   const [sumberDana, setSumberDana] = useState("REGULER");
   const [saldoRkoran, setSaldoRkoran] = useState("");
+  const [koreksiList, setKoreksiList] = useState([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -183,6 +237,7 @@ function UploadFlow({ sekolah, onLogout }) {
     setSaved(false);
     setSaveError("");
     setSaldoRkoran("");
+    setKoreksiList([]);
     setParsing(true);
     try {
       const isPdf = f.name.toLowerCase().endsWith(".pdf");
@@ -219,6 +274,7 @@ function UploadFlow({ sekolah, onLogout }) {
 
   const handleSubmit = async () => {
     if (!parsed || !parsed.npsn) return;
+    const adjusted = applyKoreksi(parsed, koreksiList.filter((k) => k.kode && k.nominal));
     setSaving(true);
     setSaveError("");
     try {
@@ -232,8 +288,8 @@ function UploadFlow({ sekolah, onLogout }) {
           bulan: parsed.bulan,
           sumberDana,
           saldoRkoran,
-          totals: parsed.totals,
-          rincian: parsed.rincian,
+          totals: adjusted.totals,
+          rincian: adjusted.rincian,
           integrityOk: parsed.integrityOk,
           fileName,
         }),
@@ -291,7 +347,9 @@ function UploadFlow({ sekolah, onLogout }) {
               </div>
             )}
 
-            {parsed.totals && (
+            {parsed.totals && (() => {
+              const adjustedDisplay = applyKoreksi(parsed, koreksiList.filter((k) => k.kode && k.nominal));
+              return (
               <>
                 <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4 flex justify-between items-center flex-wrap gap-3">
                   <div>
@@ -329,8 +387,65 @@ function UploadFlow({ sekolah, onLogout }) {
                 </div>
 
                 <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+                  <div className="flex justify-between items-start mb-1">
+                    <div>
+                      <div className="font-bold text-sm text-ink">Koreksi Pengembalian Belanja</div>
+                      <div className="text-xs text-inksoft mt-0.5">Isi kalau ada uang belanja bulan lalu yang dikembalikan bulan ini (misal salah bayar tagihan).</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {koreksiList.map((k, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <select
+                          value={k.kode}
+                          onChange={(e) => {
+                            const next = [...koreksiList];
+                            next[i] = { ...next[i], kode: e.target.value };
+                            setKoreksiList(next);
+                          }}
+                          className="flex-1 rounded-xl px-2.5 py-2 text-xs bg-white border border-border"
+                        >
+                          <option value="">— pilih kode rekening —</option>
+                          {parsed.rincian.map((g) => (
+                            <option key={g.kode} value={g.kode}>
+                              {g.kode} — {g.uraian || "Uraian tidak ditemukan"}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="Nominal"
+                          value={k.nominal}
+                          onChange={(e) => {
+                            const next = [...koreksiList];
+                            next[i] = { ...next[i], nominal: e.target.value };
+                            setKoreksiList(next);
+                          }}
+                          className="w-32 rounded-xl px-2.5 py-2 text-xs bg-white border border-border"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setKoreksiList(koreksiList.filter((_, idx) => idx !== i))}
+                          className="text-inksoft hover:text-red p-1.5"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setKoreksiList([...koreksiList, { kode: "", nominal: "" }])}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-blue mt-1 self-start"
+                    >
+                      <Plus size={14} /> Tambah koreksi
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
                   <div className="text-xs text-inksoft uppercase mb-3">Ringkasan arus kas</div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     <div>
                       <div className="text-[11px] text-inksoft uppercase">Saldo Awal</div>
                       <div className="font-mono text-sm font-bold text-ink">{fmtRp(parsed.totals.saldoAwal)}</div>
@@ -342,6 +457,13 @@ function UploadFlow({ sekolah, onLogout }) {
                     <div>
                       <div className="text-[11px] text-inksoft uppercase">Belanja</div>
                       <div className="font-mono text-sm font-bold text-red">-{fmtRp(parsed.totals.belanjaTotal)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-inksoft uppercase">Koreksi</div>
+                      <div className="font-mono text-sm font-bold text-blue">
+                        {koreksiList.reduce((s, k) => s + (Number(k.nominal) || 0), 0) > 0 ? "+" : ""}
+                        {fmtRp(koreksiList.reduce((s, k) => s + (Number(k.nominal) || 0), 0))}
+                      </div>
                     </div>
                     <div>
                       <div className="text-[11px] text-inksoft uppercase">Saldo Akhir</div>
@@ -373,21 +495,23 @@ function UploadFlow({ sekolah, onLogout }) {
                 <div className="flex gap-3 mb-4 flex-wrap">
                   <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                     <div className="text-xs text-inksoft uppercase mb-1">Modal - Peralatan & Mesin</div>
-                    <div className="font-mono text-lg font-bold text-gold">{fmtRp(parsed.totals.totalModalPeralatanMesin)}</div>
+                    <div className="font-mono text-lg font-bold text-gold">{fmtRp(adjustedDisplay.totals.totalModalPeralatanMesin)}</div>
                   </div>
                   <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                     <div className="text-xs text-inksoft uppercase mb-1">Modal - Aset Tetap Lainnya</div>
-                    <div className="font-mono text-lg font-bold text-blue">{fmtRp(parsed.totals.totalModalAsetLainnya)}</div>
+                    <div className="font-mono text-lg font-bold text-blue">{fmtRp(adjustedDisplay.totals.totalModalAsetLainnya)}</div>
                   </div>
                   <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
                     <div className="text-xs text-inksoft uppercase mb-1">Belanja barang & jasa</div>
-                    <div className="font-mono text-lg font-bold text-green">{fmtRp(parsed.totals.totalBarangJasa)}</div>
+                    <div className="font-mono text-lg font-bold text-green">{fmtRp(adjustedDisplay.totals.totalBarangJasa)}</div>
                   </div>
                 </div>
 
                 <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
-                  <div className="font-extrabold text-ink mb-3">Rincian per kode rekening</div>
-                  {parsed.rincian.map((g) => (
+                  <div className="font-extrabold text-ink mb-3">
+                    Rincian per kode rekening{koreksiList.some((k) => k.kode && k.nominal) && <span className="text-xs font-normal text-inksoft"> (sudah termasuk koreksi)</span>}
+                  </div>
+                  {adjustedDisplay.rincian.map((g) => (
                     <div key={g.kode} className="py-2 border-b border-border last:border-0">
                       <div className="flex justify-between text-sm">
                         <span className="font-mono text-ink">
@@ -416,7 +540,8 @@ function UploadFlow({ sekolah, onLogout }) {
                   </button>
                 </div>
               </>
-            )}
+              );
+            })()}
           </>
         )}
       </div>

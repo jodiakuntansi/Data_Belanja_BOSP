@@ -424,7 +424,10 @@ function parseTable(rows) {
     .reduce((s, t) => s + t.penerimaan, 0);
   const saldoAwal = saldoAwalBank + saldoAwalTunai;
 
-  const isRealIncomeRow = (t) => t.penerimaan > 0 && !/^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian) && !isPassThroughIncome(t.uraian);
+  const isRealIncomeRow = (t) =>
+    t.penerimaan > 0 &&
+    !/^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian) &&
+    !isPassThroughIncome(t.uraian);
   const pencairanBosp = transaksi
     .filter((t) => isRealIncomeRow(t) && /\bbosp\b/i.test(t.uraian))
     .reduce((s, t) => s + t.penerimaan, 0);
