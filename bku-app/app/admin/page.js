@@ -392,9 +392,10 @@ function Dashboard({ password, onLogout }) {
           saldoAwalTunai: sum(subs, (t) => t.saldoAwalTunai),
           pencairanBosp: sum(subs, (t) => t.pencairanBosp),
           bungaBank: sum(subs, (t) => t.bungaBank),
-          potonganPajak: sum(subs, (t) => t.potonganPajak),
+          potonganPajak: 0,
           pendapatanLain: sum(subs, (t) => t.pendapatanLain),
-          jumlahPendapatan: sum(subs, (t) => t.jumlahPendapatanLengkap),
+          jumlahPendapatan: sum(subs, (t) => t.pendapatan),
+          koreksi: sum(subs, (t) => t.koreksiTotal),
           regulerBJ,
           regulerPM,
           regulerATL,
@@ -425,15 +426,16 @@ function Dashboard({ password, onLogout }) {
 
       const title = `REKAPAN BOSP JENJANG ${jenjang === "TK/PAUD" ? "TK/PAUD" : jenjang} SE-KABUPATEN GIANYAR ${periodLabel(activePeriod).toUpperCase()}`;
       const headerRow1 = [title];
-      const headerRow2 = ["No", "Nama Sekolah", "Saldo Awal", "", "Penambahan", "", "", "", "", "BOSP REGULER", "", "", "", "BOSP KINERJA", "", "", "", "Saldo Akhir", "", ""];
+      const headerRow2 = ["No", "Nama Sekolah", "Saldo Awal", "", "Penambahan", "", "", "", "", "BOSP REGULER", "", "", "", "BOSP KINERJA", "", "", "", "Koreksi", "Saldo Akhir", "", ""];
       const headerRow3 = [
         "", "", "Saldo di Arkas", "Tunai",
         "Pencairan Dana BOSP", "Bunga Bank/Jasa Giro", "Potongan dan Pungutan Pajak", "Pendapatan Lain-lain", "Jumlah Pendapatan",
         "Belanja Barang dan Jasa", "Belanja Modal", "", "Jumlah Belanja BOSP REGULER",
         "Belanja Barang dan Jasa", "Belanja Modal", "", "Jumlah Belanja BOSP KINERJA",
+        "Pengembalian Belanja",
         "Sisa Saldo Buku Kas Umum", "Saldo R.Koran", "Selisih",
       ];
-      const headerRow4 = ["", "", "", "", "", "", "", "", "", "", "Peralatan Mesin", "Aset Tetap Lainnya", "", "", "Peralatan Mesin", "Aset Tetap Lainnya", "", "", "", ""];
+      const headerRow4 = ["", "", "", "", "", "", "", "", "", "", "Peralatan Mesin", "Aset Tetap Lainnya", "", "", "Peralatan Mesin", "Aset Tetap Lainnya", "", "", "", "", ""];
 
       const dataRows = recap.map((r, i) => {
         const rkoran = rkoranMap[r.npsn];
@@ -455,6 +457,7 @@ function Dashboard({ password, onLogout }) {
           r.kinerjaPM,
           r.kinerjaATL,
           r.kinerjaJumlah,
+          r.koreksi,
           r.sisaSaldoBKU,
           rkoran ?? "",
           rkoran != null ? r.sisaSaldoBKU - rkoran : "",
@@ -463,7 +466,7 @@ function Dashboard({ password, onLogout }) {
 
       const ws = XLSX.utils.aoa_to_sheet([headerRow1, headerRow2, headerRow3, headerRow4, ...dataRows]);
       ws["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 19 } },
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 20 } },
         { s: { r: 1, c: 0 }, e: { r: 3, c: 0 } },
         { s: { r: 1, c: 1 }, e: { r: 3, c: 1 } },
         { s: { r: 1, c: 2 }, e: { r: 1, c: 3 } },
@@ -483,10 +486,11 @@ function Dashboard({ password, onLogout }) {
         { s: { r: 2, c: 13 }, e: { r: 3, c: 13 } },
         { s: { r: 2, c: 14 }, e: { r: 2, c: 15 } },
         { s: { r: 2, c: 16 }, e: { r: 3, c: 16 } },
-        { s: { r: 1, c: 17 }, e: { r: 1, c: 19 } },
-        { s: { r: 2, c: 17 }, e: { r: 3, c: 17 } },
+        { s: { r: 1, c: 17 }, e: { r: 3, c: 17 } },
+        { s: { r: 1, c: 18 }, e: { r: 1, c: 20 } },
         { s: { r: 2, c: 18 }, e: { r: 3, c: 18 } },
         { s: { r: 2, c: 19 }, e: { r: 3, c: 19 } },
+        { s: { r: 2, c: 20 }, e: { r: 3, c: 20 } },
       ];
       XLSX.utils.book_append_sheet(wb, ws, JENJANG_SHEET_NAME[jenjang]);
     }
