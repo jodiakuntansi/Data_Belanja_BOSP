@@ -365,9 +365,12 @@ function Dashboard({ password, onLogout }) {
   const periodFileTag = () => periodLabel(activePeriod).replace(/\s+/g, "-").replace(/[()–]/g, "");
 
   // Groups a jenjang's raw (pre-aggregated) submissions by school, keeping
-  // BOSP Reguler and BOSP Kinerja spending separate (as their own belanja
-  // columns) while combining saldo/pendapatan across both — matching the
-  // official "Rekapan BOSP" report layout used by the dinas.
+  // BOSP Reguler and BOSP Kinerja fully separate — pendapatan and belanja
+  // both split by sumber dana — matching the official "Rekapan BOSP"
+  // report layout used by the dinas. Belanja per category is shown as
+  // Sebelum Koreksi / Koreksi / Sesudah Koreksi: the stored totals are
+  // already net of any bendahara-entered koreksi, so "sebelum" is
+  // reconstructed by adding the koreksi back.
   function buildOfficialRecap(subsForJenjang) {
     const bySchool = {};
     for (const s of subsForJenjang) {
@@ -375,35 +378,50 @@ function Dashboard({ password, onLogout }) {
       bySchool[s.npsn].subs.push(s);
     }
     const sum = (arr, get) => arr.reduce((acc, s) => acc + (get(s.totals || {}) || 0), 0);
+
+    function belanjaBreakdown(subs) {
+      const afterBJ = sum(subs, (t) => t.totalBarangJasa);
+      const afterPM = sum(subs, (t) => t.totalModalPeralatanMesin);
+      const afterATL = sum(subs, (t) => t.totalModalAsetLainnya);
+      let koreksiBJ = 0;
+      let koreksiPM = 0;
+      let koreksiATL = 0;
+      for (const s of subs) {
+        for (const k of s.totals?.koreksiList || []) {
+          const nominal = Number(k.nominal) || 0;
+          const kategori = classifyKode(k.kode);
+          if (kategori === "barang_jasa") koreksiBJ += nominal;
+          else if (kategori === "modal_peralatan_mesin") koreksiPM += nominal;
+          else if (kategori === "modal_aset_lainnya") koreksiATL += nominal;
+        }
+      }
+      return {
+        bjSebelum: afterBJ + koreksiBJ,
+        bjKoreksi: koreksiBJ,
+        bjSesudah: afterBJ,
+        pmSebelum: afterPM + koreksiPM,
+        pmKoreksi: koreksiPM,
+        pmSesudah: afterPM,
+        atlSebelum: afterATL + koreksiATL,
+        atlKoreksi: koreksiATL,
+        atlSesudah: afterATL,
+        jumlah: afterBJ + afterPM + afterATL,
+      };
+    }
+
     return Object.values(bySchool)
       .map(({ npsn, nama_sekolah, subs }) => {
         const reguler = subs.filter((s) => (s.sumber_dana || "REGULER") === "REGULER");
         const kinerja = subs.filter((s) => s.sumber_dana === "KINERJA");
-        const regulerBJ = sum(reguler, (t) => t.totalBarangJasa);
-        const regulerPM = sum(reguler, (t) => t.totalModalPeralatanMesin);
-        const regulerATL = sum(reguler, (t) => t.totalModalAsetLainnya);
-        const kinerjaBJ = sum(kinerja, (t) => t.totalBarangJasa);
-        const kinerjaPM = sum(kinerja, (t) => t.totalModalPeralatanMesin);
-        const kinerjaATL = sum(kinerja, (t) => t.totalModalAsetLainnya);
         return {
           npsn,
           nama_sekolah,
           saldoAwalBank: sum(subs, (t) => t.saldoAwalBank),
           saldoAwalTunai: sum(subs, (t) => t.saldoAwalTunai),
-          pencairanBosp: sum(subs, (t) => t.pencairanBosp),
-          bungaBank: sum(subs, (t) => t.bungaBank),
-          potonganPajak: 0,
-          pendapatanLain: sum(subs, (t) => t.pendapatanLain),
-          jumlahPendapatan: sum(subs, (t) => t.pendapatan),
-          koreksi: sum(subs, (t) => t.koreksiTotal),
-          regulerBJ,
-          regulerPM,
-          regulerATL,
-          regulerJumlah: regulerBJ + regulerPM + regulerATL,
-          kinerjaBJ,
-          kinerjaPM,
-          kinerjaATL,
-          kinerjaJumlah: kinerjaBJ + kinerjaPM + kinerjaATL,
+          pendapatanReguler: sum(reguler, (t) => t.pendapatan),
+          pendapatanKinerja: sum(kinerja, (t) => t.pendapatan),
+          reguler: belanjaBreakdown(reguler),
+          kinerja: belanjaBreakdown(kinerja),
           sisaSaldoBKU: sum(subs, (t) => t.saldoAkhir),
         };
       })
@@ -426,16 +444,38 @@ function Dashboard({ password, onLogout }) {
 
       const title = `REKAPAN BOSP JENJANG ${jenjang === "TK/PAUD" ? "TK/PAUD" : jenjang} SE-KABUPATEN GIANYAR ${periodLabel(activePeriod).toUpperCase()}`;
       const headerRow1 = [title];
-      const headerRow2 = ["No", "Nama Sekolah", "Saldo Awal", "", "Penambahan", "", "", "", "", "BOSP REGULER", "", "", "", "BOSP KINERJA", "", "", "", "Koreksi", "Saldo Akhir", "", ""];
+      const headerRow2 = [
+        "No", "Nama Sekolah", "Saldo Awal", "",
+        "Penambahan", "",
+        "BOSP REGULER", "", "", "", "", "", "", "", "", "",
+        "BOSP KINERJA", "", "", "", "", "", "", "", "", "",
+        "Saldo Akhir", "", "",
+      ];
       const headerRow3 = [
         "", "", "Saldo di Arkas", "Tunai",
-        "Pencairan Dana BOSP", "Bunga Bank/Jasa Giro", "Potongan dan Pungutan Pajak", "Pendapatan Lain-lain", "Jumlah Pendapatan",
-        "Belanja Barang dan Jasa", "Belanja Modal", "", "Jumlah Belanja BOSP REGULER",
-        "Belanja Barang dan Jasa", "Belanja Modal", "", "Jumlah Belanja BOSP KINERJA",
-        "Pengembalian Belanja",
+        "Pendapatan Dana BOSP Reguler", "Pendapatan Dana BOSP Kinerja",
+        "Belanja Barang dan Jasa", "", "",
+        "Belanja Modal Peralatan dan Mesin", "", "",
+        "Belanja Modal Aset Tetap Lainnya", "", "",
+        "Jumlah Belanja BOSP REGULER",
+        "Belanja Barang dan Jasa", "", "",
+        "Belanja Modal Peralatan dan Mesin", "", "",
+        "Belanja Modal Aset Tetap Lainnya", "", "",
+        "Jumlah Belanja BOSP KINERJA",
         "Sisa Saldo Buku Kas Umum", "Saldo R.Koran", "Selisih",
       ];
-      const headerRow4 = ["", "", "", "", "", "", "", "", "", "", "Peralatan Mesin", "Aset Tetap Lainnya", "", "", "Peralatan Mesin", "Aset Tetap Lainnya", "", "", "", "", ""];
+      const headerRow4 = [
+        "", "", "", "", "", "",
+        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+        "",
+        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+        "",
+        "", "", "",
+      ];
 
       const dataRows = recap.map((r, i) => {
         const rkoran = rkoranMap[r.npsn];
@@ -444,20 +484,16 @@ function Dashboard({ password, onLogout }) {
           r.nama_sekolah,
           r.saldoAwalBank,
           r.saldoAwalTunai,
-          r.pencairanBosp,
-          r.bungaBank,
-          r.potonganPajak,
-          r.pendapatanLain,
-          r.jumlahPendapatan,
-          r.regulerBJ,
-          r.regulerPM,
-          r.regulerATL,
-          r.regulerJumlah,
-          r.kinerjaBJ,
-          r.kinerjaPM,
-          r.kinerjaATL,
-          r.kinerjaJumlah,
-          r.koreksi,
+          r.pendapatanReguler,
+          r.pendapatanKinerja,
+          r.reguler.bjSebelum, r.reguler.bjKoreksi, r.reguler.bjSesudah,
+          r.reguler.pmSebelum, r.reguler.pmKoreksi, r.reguler.pmSesudah,
+          r.reguler.atlSebelum, r.reguler.atlKoreksi, r.reguler.atlSesudah,
+          r.reguler.jumlah,
+          r.kinerja.bjSebelum, r.kinerja.bjKoreksi, r.kinerja.bjSesudah,
+          r.kinerja.pmSebelum, r.kinerja.pmKoreksi, r.kinerja.pmSesudah,
+          r.kinerja.atlSebelum, r.kinerja.atlKoreksi, r.kinerja.atlSesudah,
+          r.kinerja.jumlah,
           r.sisaSaldoBKU,
           rkoran ?? "",
           rkoran != null ? r.sisaSaldoBKU - rkoran : "",
@@ -466,31 +502,29 @@ function Dashboard({ password, onLogout }) {
 
       const ws = XLSX.utils.aoa_to_sheet([headerRow1, headerRow2, headerRow3, headerRow4, ...dataRows]);
       ws["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 20 } },
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 28 } },
         { s: { r: 1, c: 0 }, e: { r: 3, c: 0 } },
         { s: { r: 1, c: 1 }, e: { r: 3, c: 1 } },
         { s: { r: 1, c: 2 }, e: { r: 1, c: 3 } },
         { s: { r: 2, c: 2 }, e: { r: 3, c: 2 } },
         { s: { r: 2, c: 3 }, e: { r: 3, c: 3 } },
-        { s: { r: 1, c: 4 }, e: { r: 1, c: 8 } },
+        { s: { r: 1, c: 4 }, e: { r: 1, c: 5 } },
         { s: { r: 2, c: 4 }, e: { r: 3, c: 4 } },
         { s: { r: 2, c: 5 }, e: { r: 3, c: 5 } },
-        { s: { r: 2, c: 6 }, e: { r: 3, c: 6 } },
-        { s: { r: 2, c: 7 }, e: { r: 3, c: 7 } },
-        { s: { r: 2, c: 8 }, e: { r: 3, c: 8 } },
-        { s: { r: 1, c: 9 }, e: { r: 1, c: 12 } },
-        { s: { r: 2, c: 9 }, e: { r: 3, c: 9 } },
-        { s: { r: 2, c: 10 }, e: { r: 2, c: 11 } },
-        { s: { r: 2, c: 12 }, e: { r: 3, c: 12 } },
-        { s: { r: 1, c: 13 }, e: { r: 1, c: 16 } },
-        { s: { r: 2, c: 13 }, e: { r: 3, c: 13 } },
-        { s: { r: 2, c: 14 }, e: { r: 2, c: 15 } },
-        { s: { r: 2, c: 16 }, e: { r: 3, c: 16 } },
-        { s: { r: 1, c: 17 }, e: { r: 3, c: 17 } },
-        { s: { r: 1, c: 18 }, e: { r: 1, c: 20 } },
-        { s: { r: 2, c: 18 }, e: { r: 3, c: 18 } },
-        { s: { r: 2, c: 19 }, e: { r: 3, c: 19 } },
-        { s: { r: 2, c: 20 }, e: { r: 3, c: 20 } },
+        { s: { r: 1, c: 6 }, e: { r: 1, c: 15 } },
+        { s: { r: 2, c: 6 }, e: { r: 2, c: 8 } },
+        { s: { r: 2, c: 9 }, e: { r: 2, c: 11 } },
+        { s: { r: 2, c: 12 }, e: { r: 2, c: 14 } },
+        { s: { r: 2, c: 15 }, e: { r: 3, c: 15 } },
+        { s: { r: 1, c: 16 }, e: { r: 1, c: 25 } },
+        { s: { r: 2, c: 16 }, e: { r: 2, c: 18 } },
+        { s: { r: 2, c: 19 }, e: { r: 2, c: 21 } },
+        { s: { r: 2, c: 22 }, e: { r: 2, c: 24 } },
+        { s: { r: 2, c: 25 }, e: { r: 3, c: 25 } },
+        { s: { r: 1, c: 26 }, e: { r: 1, c: 28 } },
+        { s: { r: 2, c: 26 }, e: { r: 3, c: 26 } },
+        { s: { r: 2, c: 27 }, e: { r: 3, c: 27 } },
+        { s: { r: 2, c: 28 }, e: { r: 3, c: 28 } },
       ];
       XLSX.utils.book_append_sheet(wb, ws, JENJANG_SHEET_NAME[jenjang]);
     }
