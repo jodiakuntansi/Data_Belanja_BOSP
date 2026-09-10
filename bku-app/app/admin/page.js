@@ -413,6 +413,10 @@ function Dashboard({ password, onLogout }) {
       .map(({ npsn, nama_sekolah, subs }) => {
         const reguler = subs.filter((s) => (s.sumber_dana || "REGULER") === "REGULER");
         const kinerja = subs.filter((s) => s.sumber_dana === "KINERJA");
+        const regulerBreakdown = belanjaBreakdown(reguler);
+        const kinerjaBreakdown = belanjaBreakdown(kinerja);
+        const regulerKoreksiTotal = regulerBreakdown.bjKoreksi + regulerBreakdown.pmKoreksi + regulerBreakdown.atlKoreksi;
+        const kinerjaKoreksiTotal = kinerjaBreakdown.bjKoreksi + kinerjaBreakdown.pmKoreksi + kinerjaBreakdown.atlKoreksi;
         return {
           npsn,
           nama_sekolah,
@@ -420,9 +424,13 @@ function Dashboard({ password, onLogout }) {
           saldoAwalTunai: sum(subs, (t) => t.saldoAwalTunai),
           pendapatanReguler: sum(reguler, (t) => t.pendapatan),
           pendapatanKinerja: sum(kinerja, (t) => t.pendapatan),
-          reguler: belanjaBreakdown(reguler),
-          kinerja: belanjaBreakdown(kinerja),
-          sisaSaldoBKU: sum(subs, (t) => t.saldoAkhir),
+          reguler: regulerBreakdown,
+          kinerja: kinerjaBreakdown,
+          // The koreksi's cash inflow never appears as its own labeled row
+          // in the BKU, so the file's own "Jumlah" (and thus saldoAkhir)
+          // understates the true bank balance by exactly that amount —
+          // add it back here to get the real Sisa Saldo Buku Kas Umum.
+          sisaSaldoBKU: sum(subs, (t) => t.saldoAkhir) + regulerKoreksiTotal + kinerjaKoreksiTotal,
         };
       })
       .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""));
