@@ -8,6 +8,9 @@ export async function POST(req) {
   if (!npsn || !pin || !tahun || !bulan || !totals) {
     return NextResponse.json({ error: "Data tidak lengkap." }, { status: 400 });
   }
+  if (saldoRkoran === undefined || saldoRkoran === null || saldoRkoran === "" || isNaN(Number(saldoRkoran))) {
+    return NextResponse.json({ error: "Saldo R.Koran wajib diisi sebelum submit." }, { status: 400 });
+  }
 
   const supabase = supabaseAdmin();
 
