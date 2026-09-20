@@ -272,8 +272,10 @@ function UploadFlow({ sekolah, onLogout }) {
     setParsing(false);
   }, []);
 
+  const rkoranValid = saldoRkoran !== "" && !isNaN(Number(saldoRkoran));
+
   const handleSubmit = async () => {
-    if (!parsed || !parsed.npsn) return;
+    if (!parsed || !parsed.npsn || !rkoranValid) return;
     const adjusted = applyKoreksi(parsed, koreksiList.filter((k) => k.kode && k.nominal));
     setSaving(true);
     setSaveError("");
@@ -472,16 +474,24 @@ function UploadFlow({ sekolah, onLogout }) {
                   </div>
 
                   <div className="mt-4 pt-4 border-t border-border">
-                    <label className="text-[11px] text-inksoft uppercase block mb-1.5">Saldo R.Koran (dari rekening koran bank bulan ini)</label>
+                    <label className="text-[11px] text-inksoft uppercase block mb-1.5">
+                      Saldo R.Koran (dari rekening koran bank bulan ini) <span className="text-red">*wajib diisi</span>
+                    </label>
                     <input
                       type="number"
                       inputMode="numeric"
                       value={saldoRkoran}
                       onChange={(e) => setSaldoRkoran(e.target.value)}
                       placeholder="Contoh: 16215000"
-                      className="w-full max-w-xs rounded-xl px-3 py-2.5 text-sm bg-white border border-border focus:border-blue outline-none transition"
+                      className={`w-full max-w-xs rounded-xl px-3 py-2.5 text-sm bg-white border outline-none transition ${
+                        saldoRkoran === "" ? "border-red" : "border-border focus:border-blue"
+                      }`}
                     />
-                    {saldoRkoran !== "" && !isNaN(Number(saldoRkoran)) && (
+                    {saldoRkoran === "" ? (
+                      <div className="text-xs mt-2 text-red">
+                        Wajib diisi sebelum bisa dikirim ke rekap dinas. Cek angka di rekening koran bank sekolah bulan ini.
+                      </div>
+                    ) : !isNaN(Number(saldoRkoran)) && (
                       <div className="text-xs mt-2">
                         Selisih dengan Saldo Akhir BKU:{" "}
                         <span className={`font-mono font-bold ${parsed.totals.saldoAkhir - Number(saldoRkoran) === 0 ? "text-green" : "text-red"}`}>
@@ -526,12 +536,18 @@ function UploadFlow({ sekolah, onLogout }) {
 
                 <div className="bg-card border border-border rounded-2xl shadow-sm p-5 flex justify-between items-center flex-wrap gap-3">
                   <div className="text-sm text-inksoft">
-                    {saved ? <span className="text-green font-semibold">Data tersimpan dan masuk ke rekap dinas.</span> : "Periksa hasil di atas sebelum mengirim."}
+                    {saved ? (
+                      <span className="text-green font-semibold">Data tersimpan dan masuk ke rekap dinas.</span>
+                    ) : !rkoranValid ? (
+                      <span className="text-red font-semibold">Isi Saldo R.Koran di atas dulu sebelum bisa mengirim.</span>
+                    ) : (
+                      "Periksa hasil di atas sebelum mengirim."
+                    )}
                     {saveError && <span className="text-red block mt-1">{saveError}</span>}
                   </div>
                   <button
                     onClick={handleSubmit}
-                    disabled={!parsed.npsn || saving || saved}
+                    disabled={!parsed.npsn || !rkoranValid || saving || saved}
                     className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
                       saved ? "bg-paper text-inksoft" : "gradient-hero text-white shadow-md hover:brightness-110"
                     }`}
