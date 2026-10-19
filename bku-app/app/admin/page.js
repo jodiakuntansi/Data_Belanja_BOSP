@@ -49,6 +49,12 @@ function periodLabel(value) {
 // Combine multiple monthly submissions from the same school (relevant
 // for semester/tahunan views) into one row: totals summed, rincian
 // merged per kode rekening.
+// Pendapatan = hanya Terima Dana BOSP (pencairanBosp). Memakai field ini
+// (bukan totals.pendapatan) membuat data lama yang sudah tersimpan
+// dengan pendapatan membengkak (mis. akibat PPN) ikut benar tanpa
+// upload ulang. Data yang tidak punya field itu kembali ke pendapatan.
+const pendapatanOf = (t) => t?.pencairanBosp ?? t?.pendapatan ?? 0;
+
 function aggregateByNpsn(subs) {
   const map = {};
   for (const s of subs) {
@@ -76,7 +82,7 @@ function aggregateByNpsn(subs) {
     a.bulanList.push(s.bulan);
     if (s.file_name) a.file_names.push(s.file_name);
 
-    a.pendapatan += s.totals?.pendapatan || 0;
+    a.pendapatan += pendapatanOf(s.totals);
     a.belanjaTotal += s.totals?.belanjaTotal || 0;
     const order = BULAN_ORDER[s.bulan] || 0;
     if (order < a.saldoAwalBulanOrder) {
@@ -421,12 +427,21 @@ function Dashboard({ password, onLogout }) {
   // Sebelum Koreksi / Koreksi / Sesudah Koreksi: the stored totals are
   // already net of any bendahara-entered koreksi, so "sebelum" is
   // reconstructed by adding the koreksi back.
-  // Perubahan saldo satu submission: pendapatan - belanja (angka file,
-  // sebelum koreksi) + koreksi pengembalian belanja (uang yang kembali ke
-  // rekening, tidak tercatat sebagai baris di BKU).
+  // Perubahan saldo satu submission = Saldo Akhir - Saldo Awal menurut
+  // file BKU itu sendiri (selisih saldo yang tercatat bank, tidak
+  // bergantung pada cara transaksi diklasifikasikan), ditambah koreksi
+  // pengembalian belanja (uang yang kembali ke rekening tetapi tidak
+  // tercatat sebagai baris di BKU). Sengaja tidak memakai
+  // pendapatan - belanja: kalau satu jenis transaksi pass-through salah
+  // diklasifikasikan (mis. PPN sebelum diperbaiki), saldo ikut meleset.
+  // Data lama yang sudah tersimpan juga ikut benar tanpa perlu upload ulang.
   const movementOf = (t) => {
     const koreksi = t?.koreksiTotal ?? (t?.koreksiList || []).reduce((a, k) => a + (Number(k.nominal) || 0), 0);
-    return (t?.pendapatan || 0) - (t?.belanjaTotal || 0) + (Number(koreksi) || 0);
+    const mutasi =
+      t?.saldoAkhir != null && t?.saldoAwal != null
+        ? (t.saldoAkhir || 0) - (t.saldoAwal || 0)
+        : (t?.pendapatan || 0) - (t?.belanjaTotal || 0);
+    return mutasi + (Number(koreksi) || 0);
   };
 
   function buildOfficialRecap(subsForJenjang) {
@@ -519,8 +534,8 @@ function Dashboard({ password, onLogout }) {
           nama_sekolah,
           saldoAwalBank,
           saldoAwalTunai,
-          pendapatanReguler: sum(reguler, (t) => t.pendapatan),
-          pendapatanKinerja: sum(kinerja, (t) => t.pendapatan),
+          pendapatanReguler: sum(reguler, pendapatanOf),
+          pendapatanKinerja: sum(kinerja, pendapatanOf),
           reguler: regulerBreakdown,
           kinerja: kinerjaBreakdown,
           sisaSaldoBKU,
@@ -668,7 +683,7 @@ function Dashboard({ password, onLogout }) {
             s.npsn,
             (s.bulanList || []).join(", "),
             s.totals?.saldoAwal ?? 0,
-            s.totals?.pendapatan ?? 0,
+            pendapatanOf(s.totals),
             s.totals?.totalModalPeralatanMesin || 0,
             s.totals?.totalModalAsetLainnya || 0,
             s.totals?.totalBarangJasa || 0,
@@ -995,7 +1010,7 @@ function Dashboard({ password, onLogout }) {
                                 </div>
                                 <div>
                                   <div className="text-[10px] uppercase">Pendapatan</div>
-                                  <div className="font-mono font-semibold text-green">+{fmtRp(s.totals?.pendapatan)}</div>
+                                  <div className="font-mono font-semibold text-green">+{fmtRp(pendapatanOf(s.totals))}</div>
                                 </div>
                                 <div>
                                   <div className="text-[10px] uppercase">Belanja</div>

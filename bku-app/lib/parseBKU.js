@@ -64,7 +64,17 @@ function isPassThroughIncome(uraian) {
   // deduction (which is already excluded from Belanja for having no kode
   // rekening), so the pair nets to zero for the school. Excluding only
   // the Pajak side left Pendapatan overstated by exactly the interest.
-  return u.includes("siplah") || /\bpph\b/.test(u) || /\bpajak\b/.test(u) || /bunga\s*bank|jasa\s*giro/.test(u);
+  // PPN ("Terima PPN" / "Setor PPN") sama seperti PPh: dipungut lalu
+  // disetor penuh, selalu berpasangan dan bersih nol bagi sekolah. Tanpa
+  // ini, sisi "Terima PPN" terbaca sebagai pendapatan sementara sisi
+  // "Setor PPN" (tanpa No. Bukti) sudah dikecualikan dari belanja.
+  return (
+    u.includes("siplah") ||
+    /\bpph\b/.test(u) ||
+    /\bppn\b/.test(u) ||
+    /\bpajak\b/.test(u) ||
+    /bunga\s*bank|jasa\s*giro/.test(u)
+  );
 }
 
 function cellStr(v) {
@@ -446,8 +456,15 @@ function parseTable(rows) {
     t.penerimaan > 0 &&
     !/^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian) &&
     !isPassThroughIncome(t.uraian);
+  // Pendapatan (Terima Dana BOSP) harus punya No. Bukti penerimaan,
+  // berawalan "BBU" (mis. BBU01) — berbeda dari bukti belanja "BNU".
+  // Patokan ini juga mengenali penerimaan yang uraiannya tidak memuat
+  // kata "BOSP" (mis. "Terima Dana Tahap 2"), sementara baris tanpa
+  // No. Bukti tidak pernah dihitung sebagai pendapatan.
+  const isPendapatanRow = (t) =>
+    isRealIncomeRow(t) && !!t.noBukti && (/^BBU/i.test(t.noBukti) || /\bbosp\b/i.test(t.uraian));
   const pencairanBosp = transaksi
-    .filter((t) => isRealIncomeRow(t) && /\bbosp\b/i.test(t.uraian))
+    .filter(isPendapatanRow)
     .reduce((s, t) => s + t.penerimaan, 0);
   const bungaBank = transaksi
     .filter((t) => isRealIncomeRow(t) && /bunga\s*bank|jasa\s*giro/i.test(t.uraian))
@@ -456,9 +473,13 @@ function parseTable(rows) {
     .filter((t) => t.penerimaan > 0 && !/^Saldo\s+(Bank|Tunai)\b/i.test(t.uraian) && isPassThroughIncome(t.uraian))
     .reduce((s, t) => s + t.penerimaan, 0);
   const pendapatanLain = transaksi
-    .filter((t) => isRealIncomeRow(t) && !/\bbosp\b/i.test(t.uraian) && !/bunga\s*bank|jasa\s*giro/i.test(t.uraian))
+    .filter((t) => isRealIncomeRow(t) && !isPendapatanRow(t) && !/bunga\s*bank|jasa\s*giro/i.test(t.uraian))
     .reduce((s, t) => s + t.penerimaan, 0);
-  const pendapatan = pencairanBosp + bungaBank + pendapatanLain;
+  // Aturan dinas: pendapatan HANYA dari "Terima Dana BOSP". Semua nilai
+  // yang masuk lalu keluar (PPh, PPN, SIPLah, bunga bank & pajak bunga)
+  // tidak dihitung. pendapatanLain tetap disimpan sebagai informasi
+  // (penerimaan lain yang tidak dikenali), tetapi TIDAK masuk pendapatan.
+  const pendapatan = pencairanBosp;
   const jumlahPendapatanLengkap = pencairanBosp + bungaBank + potonganPajak + pendapatanLain;
   const belanjaTotal = transaksi.filter((t) => !t.excluded).reduce((s, t) => s + t.pengeluaran, 0);
   const saldoAkhir = jumlahRow ? jumlahRow.saldo : saldoAwal + pendapatan - belanjaTotal;
