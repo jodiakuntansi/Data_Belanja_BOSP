@@ -644,8 +644,11 @@ function UploadFlow({ sekolah, onLogout }) {
                       inputMode="numeric"
                       value={saldoRkoran}
                       onChange={(e) => setSaldoRkoran(e.target.value)}
+                      // Cegah angka berubah saat roda mouse/trackpad digeser
+                      // selagi kolom aktif (kolom jadi kehilangan fokus).
+                      onWheel={(e) => e.currentTarget.blur()}
                       placeholder="Contoh: 16215000"
-                      className={`w-full max-w-xs rounded-xl px-3 py-2.5 text-sm bg-white border outline-none transition ${
+                      className={`no-spinner w-full max-w-xs rounded-xl px-3 py-2.5 text-sm bg-white border outline-none transition ${
                         saldoRkoran === "" ? "border-red" : "border-border focus:border-blue"
                       }`}
                     />
