@@ -55,6 +55,10 @@ function periodLabel(value) {
 // upload ulang. Data yang tidak punya field itu kembali ke pendapatan.
 const pendapatanOf = (t) => t?.pencairanBosp ?? t?.pendapatan ?? 0;
 
+// Total koreksi pengembalian belanja pada satu submission.
+const koreksiOf = (t) =>
+  Number(t?.koreksiTotal ?? (t?.koreksiList || []).reduce((a, k) => a + (Number(k.nominal) || 0), 0)) || 0;
+
 function aggregateByNpsn(subs) {
   const map = {};
   for (const s of subs) {
@@ -131,6 +135,12 @@ function aggregateByNpsn(subs) {
     .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""));
 }
 
+// Angka rupiah tanpa awalan "Rp" (satuan ada di judul kolom) — dipakai di
+// tabel padat agar angka besar tidak patah baris.
+function fmtAngka(n) {
+  return Math.round(n || 0).toLocaleString("id-ID");
+}
+
 function fmtRp(n) {
   return "Rp " + Math.round(n || 0).toLocaleString("id-ID");
 }
@@ -203,7 +213,7 @@ function Dashboard({ password, onLogout }) {
   const [search, setSearch] = useState("");
   const [expandedRow, setExpandedRow] = useState(null);
   const [expandedJenjang, setExpandedJenjang] = useState(null);
-  const [view, setView] = useState("sekolah");
+  const [view, setView] = useState("saldo");
   const [rkoranMap, setRkoranMap] = useState({});
   const [rkoranText, setRkoranText] = useState("");
   const [editingRkoran, setEditingRkoran] = useState(false);
@@ -436,13 +446,59 @@ function Dashboard({ password, onLogout }) {
   // diklasifikasikan (mis. PPN sebelum diperbaiki), saldo ikut meleset.
   // Data lama yang sudah tersimpan juga ikut benar tanpa perlu upload ulang.
   const movementOf = (t) => {
-    const koreksi = t?.koreksiTotal ?? (t?.koreksiList || []).reduce((a, k) => a + (Number(k.nominal) || 0), 0);
     const mutasi =
       t?.saldoAkhir != null && t?.saldoAwal != null
         ? (t.saldoAkhir || 0) - (t.saldoAwal || 0)
         : (t?.pendapatan || 0) - (t?.belanjaTotal || 0);
-    return mutasi + (Number(koreksi) || 0);
+    return mutasi + koreksiOf(t);
   };
+
+  // ---- Tab "Saldo per sekolah": saldo awal, pendapatan, belanja, saldo
+  // akhir per sekolah, dikelompokkan per jenjang. Rumus sama dengan
+  // Rekapan BOSP Resmi: saldo awal = saldo awal Januari dari database
+  // (+ mutasi bulan-bulan sebelum periode); jika sekolah belum ada di
+  // database, dipakai saldo awal dari file BKU (+ SiLPA Kinerja) dan
+  // ditandai "*". Belanja = belanja bersih setelah koreksi pengembalian.
+  const saldoRingkas = (npsn) => {
+    const subsP = searched.filter((x) => x.npsn === npsn);
+    if (subsP.length === 0) return null;
+    const tahun = subsP[0].tahun;
+    const startOrder = Math.min(...subsP.map((x) => BULAN_ORDER[x.bulan] || 99));
+    const anchor = saldoAwalMap[npsn];
+    let saldoAwal;
+    if (anchor) {
+      const prior = submissions.filter(
+        (x) => x.npsn === npsn && x.tahun === tahun && (BULAN_ORDER[x.bulan] || 0) < startOrder
+      );
+      saldoAwal = anchor.arkas + anchor.tunai + prior.reduce((a, x) => a + movementOf(x.totals), 0);
+    } else {
+      saldoAwal =
+        subsP.filter((x) => (BULAN_ORDER[x.bulan] || 99) === startOrder).reduce((a, x) => a + (x.totals?.saldoAwal || 0), 0) +
+        (silpaMap[npsn] || 0);
+    }
+    const pendapatan = subsP.reduce((a, x) => a + pendapatanOf(x.totals), 0);
+    const belanja = subsP.reduce((a, x) => a + (x.totals?.belanjaTotal || 0) - koreksiOf(x.totals), 0);
+    const saldoAkhir = saldoAwal + subsP.reduce((a, x) => a + movementOf(x.totals), 0);
+    const selisih = saldoAwal + pendapatan - belanja - saldoAkhir;
+    return { saldoAwal, pendapatan, belanja, saldoAkhir, selisih, dariDatabase: !!anchor };
+  };
+
+  const saldoGroups = jenjangGroups.map((jg) => {
+    const rows = jg.schools
+      .map((sch) => ({ sch, r: saldoRingkas(sch.npsn) }))
+      .filter((x) => x.r)
+      .sort((a, b) => (a.sch.nama_sekolah || "").localeCompare(b.sch.nama_sekolah || ""));
+    const tot = rows.reduce(
+      (a, { r }) => ({
+        saldoAwal: a.saldoAwal + r.saldoAwal,
+        pendapatan: a.pendapatan + r.pendapatan,
+        belanja: a.belanja + r.belanja,
+        saldoAkhir: a.saldoAkhir + r.saldoAkhir,
+      }),
+      { saldoAwal: 0, pendapatan: 0, belanja: 0, saldoAkhir: 0 }
+    );
+    return { jenjang: jg.jenjang, rows, tot, belum: jg.belum.length };
+  });
 
   function buildOfficialRecap(subsForJenjang) {
     const bySchool = {};
@@ -967,7 +1023,7 @@ function Dashboard({ password, onLogout }) {
             </div>
 
             <div className="flex gap-2 mb-3">
-              {[{ id: "sekolah", label: "Per sekolah" }, { id: "kode", label: "Rincian per kode rekening" }].map((t) => (
+              {[{ id: "saldo", label: "Saldo per sekolah" }, { id: "sekolah", label: "Klasifikasi belanja" }, { id: "kode", label: "Rincian per kode rekening" }].map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setView(t.id)}
@@ -978,7 +1034,63 @@ function Dashboard({ password, onLogout }) {
               ))}
             </div>
 
-            {view === "sekolah"
+            {view === "saldo"
+              ? saldoGroups.map((sg) => (
+                  <div key={sg.jenjang} className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+                    <div className="font-extrabold text-ink mb-3">
+                      {sg.jenjang} <span className="text-xs font-normal text-inksoft">· {sg.rows.length} sekolah submit{sg.belum > 0 ? ` · ${sg.belum} belum` : ""}</span>
+                    </div>
+                    {sg.rows.length === 0 ? (
+                      <div className="text-sm text-inksoft">Belum ada submisi {sg.jenjang} untuk periode ini.</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <div className="min-w-[680px]">
+                          <div className="grid grid-cols-[minmax(170px,1fr)_116px_116px_116px_116px_32px] text-[11px] text-inksoft uppercase pb-1 border-b border-border">
+                            <span className="sticky left-0 bg-card">Sekolah</span>
+                            <span className="text-right">Saldo awal (Rp)</span>
+                            <span className="text-right">Pendapatan</span>
+                            <span className="text-right">Belanja</span>
+                            <span className="text-right">Saldo akhir</span>
+                            <span className="text-center">Cek</span>
+                          </div>
+                          {sg.rows.map(({ sch, r }) => {
+                            const balance = Math.abs(r.selisih) <= 1;
+                            return (
+                              <div key={sch.npsn} className="grid grid-cols-[minmax(170px,1fr)_116px_116px_116px_116px_32px] items-center text-[13px] py-2 border-b border-border">
+                                <span className="sticky left-0 bg-card pr-2 text-ink">{sch.nama_sekolah} <span className="text-inksoft text-xs">({sch.npsn})</span></span>
+                                <span className="text-right font-mono text-ink">{fmtAngka(r.saldoAwal)}{!r.dariDatabase && <span className="text-gold">*</span>}</span>
+                                <span className="text-right font-mono text-green">{fmtAngka(r.pendapatan)}</span>
+                                <span className="text-right font-mono text-red">{fmtAngka(r.belanja)}</span>
+                                <span className="text-right font-mono font-semibold text-ink">{fmtAngka(r.saldoAkhir)}</span>
+                                <span
+                                  className={`text-center ${!sch.integrity_ok ? "text-red" : balance ? "text-green" : "text-gold"}`}
+                                  title={
+                                    !sch.integrity_ok
+                                      ? "Data BKU tidak terverifikasi — minta sekolah upload ulang."
+                                      : balance
+                                      ? "Saldo awal + pendapatan − belanja = saldo akhir."
+                                      : `Saldo awal + pendapatan − belanja berbeda Rp ${fmtAngka(r.selisih)} dari saldo akhir (mis. bunga bank bersih atau penerimaan lain).`
+                                  }
+                                >
+                                  {!sch.integrity_ok ? "!" : balance ? "✓" : "≠"}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          <div className="grid grid-cols-[minmax(170px,1fr)_116px_116px_116px_116px_32px] items-center text-[13px] py-2 font-bold bg-paper">
+                            <span className="sticky left-0 bg-paper pl-1 text-ink">Total {sg.jenjang}</span>
+                            <span className="text-right font-mono text-ink">{fmtAngka(sg.tot.saldoAwal)}</span>
+                            <span className="text-right font-mono text-green">{fmtAngka(sg.tot.pendapatan)}</span>
+                            <span className="text-right font-mono text-red">{fmtAngka(sg.tot.belanja)}</span>
+                            <span className="text-right font-mono text-ink">{fmtAngka(sg.tot.saldoAkhir)}</span>
+                            <span />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              : view === "sekolah"
               ? jenjangGroups.map((jg) => (
                   <div key={jg.jenjang} className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
                     <div className="font-extrabold text-ink mb-3">{jg.jenjang} <span className="text-xs font-normal text-inksoft">· {jg.schools.length} sekolah submit</span></div>
@@ -1062,6 +1174,12 @@ function Dashboard({ password, onLogout }) {
                     </div>
                   );
                 })}
+            {view === "saldo" && (
+              <div className="text-[11px] text-inksoft mb-6">
+                Semua angka dalam rupiah. Belanja = belanja bersih setelah koreksi pengembalian. Pendapatan hanya dari Terima Dana BOSP (PPh, PPN, SIPLah, bunga bank tidak dihitung).{" "}
+                <span className="text-gold">*</span> = saldo awal sekolah ini belum diisi di database, jadi dibaca dari file BKU.
+              </div>
+            )}
           </>
         )}
       </div>
