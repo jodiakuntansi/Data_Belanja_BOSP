@@ -203,6 +203,8 @@ function Dashboard({ password, onLogout }) {
   const [editingRkoran, setEditingRkoran] = useState(false);
   const [rkoranSaving, setRkoranSaving] = useState(false);
   const [rkoranMsg, setRkoranMsg] = useState("");
+  const [silpaMap, setSilpaMap] = useState({});
+  const [saldoAwalMap, setSaldoAwalMap] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -265,6 +267,54 @@ function Dashboard({ password, onLogout }) {
   useEffect(() => {
     loadRkoran();
   }, [loadRkoran]);
+
+  const loadSilpa = useCallback(async () => {
+    if (!period) {
+      setSilpaMap({});
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/silpa?tahun=${period.tahun}`, {
+        headers: { "x-admin-password": password },
+      });
+      const data = await res.json();
+      const map = {};
+      (data.entries || []).forEach((e) => {
+        map[e.npsn] = Number(e.nominal) || 0;
+      });
+      setSilpaMap(map);
+    } catch {
+      setSilpaMap({});
+    }
+  }, [password, activePeriod]);
+
+  useEffect(() => {
+    loadSilpa();
+  }, [loadSilpa]);
+
+  const loadSaldoAwal = useCallback(async () => {
+    if (!period) {
+      setSaldoAwalMap({});
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/saldoawal?tahun=${period.tahun}`, {
+        headers: { "x-admin-password": password },
+      });
+      const data = await res.json();
+      const map = {};
+      (data.entries || []).forEach((e) => {
+        map[e.npsn] = { arkas: Number(e.saldo_arkas) || 0, tunai: Number(e.saldo_tunai) || 0 };
+      });
+      setSaldoAwalMap(map);
+    } catch {
+      setSaldoAwalMap({});
+    }
+  }, [password, activePeriod]);
+
+  useEffect(() => {
+    loadSaldoAwal();
+  }, [loadSaldoAwal]);
 
   const saveRkoran = async () => {
     if (!period || period.type !== "month") return;
@@ -371,6 +421,14 @@ function Dashboard({ password, onLogout }) {
   // Sebelum Koreksi / Koreksi / Sesudah Koreksi: the stored totals are
   // already net of any bendahara-entered koreksi, so "sebelum" is
   // reconstructed by adding the koreksi back.
+  // Perubahan saldo satu submission: pendapatan - belanja (angka file,
+  // sebelum koreksi) + koreksi pengembalian belanja (uang yang kembali ke
+  // rekening, tidak tercatat sebagai baris di BKU).
+  const movementOf = (t) => {
+    const koreksi = t?.koreksiTotal ?? (t?.koreksiList || []).reduce((a, k) => a + (Number(k.nominal) || 0), 0);
+    return (t?.pendapatan || 0) - (t?.belanjaTotal || 0) + (Number(koreksi) || 0);
+  };
+
   function buildOfficialRecap(subsForJenjang) {
     const bySchool = {};
     for (const s of subsForJenjang) {
@@ -417,20 +475,57 @@ function Dashboard({ password, onLogout }) {
         const kinerjaBreakdown = belanjaBreakdown(kinerja);
         const regulerKoreksiTotal = regulerBreakdown.bjKoreksi + regulerBreakdown.pmKoreksi + regulerBreakdown.atlKoreksi;
         const kinerjaKoreksiTotal = kinerjaBreakdown.bjKoreksi + kinerjaBreakdown.pmKoreksi + kinerjaBreakdown.atlKoreksi;
+
+        // Saldo awal & sisa saldo. Kalau sekolah punya saldo awal Januari
+        // di tabel saldo_awal_januari: Januari = angka itu, bulan lain =
+        // saldo akhir bulan sebelumnya yang dirantai dari Januari.
+        // Kalau belum ada, jatuh kembali ke cara lama (baca dari BKU +
+        // SiLPA Kinerja) supaya sekolah tersebut tetap tampil.
+        const anchor = saldoAwalMap[npsn];
+        let saldoAwalBank, saldoAwalTunai, sisaSaldoBKU;
+        const bulanKosong = [];
+        if (anchor && period?.type === "month") {
+          const nowOrder = BULAN_ORDER[[...period.bulanSet][0]] || 1;
+          const prior = submissions.filter(
+            (x) => x.npsn === npsn && x.tahun === period.tahun && (BULAN_ORDER[x.bulan] || 0) < nowOrder
+          );
+          for (let o = 1; o < nowOrder; o++) {
+            if (!prior.some((x) => BULAN_ORDER[x.bulan] === o)) {
+              bulanKosong.push(Object.keys(BULAN_ORDER).find((b) => BULAN_ORDER[b] === o));
+            }
+          }
+          const totalAwal = anchor.arkas + anchor.tunai + prior.reduce((acc, x) => acc + movementOf(x.totals), 0);
+          if (nowOrder === 1) {
+            saldoAwalBank = anchor.arkas;
+            saldoAwalTunai = anchor.tunai;
+          } else {
+            // Pecahan tunai bulan berjalan tetap diambil dari BKU; sisanya
+            // ke "Saldo di Arkas", sehingga totalnya selalu = hasil rantai.
+            saldoAwalTunai = sum(subs, (t) => t.saldoAwalTunai);
+            saldoAwalBank = totalAwal - saldoAwalTunai;
+          }
+          sisaSaldoBKU = totalAwal + subs.reduce((acc, x) => acc + movementOf(x.totals), 0);
+        } else {
+          saldoAwalBank = sum(subs, (t) => t.saldoAwalBank);
+          saldoAwalTunai = sum(subs, (t) => t.saldoAwalTunai);
+          // Koreksi tidak muncul sebagai baris sendiri di BKU, jadi
+          // "Jumlah"/saldoAkhir file lebih kecil sebesar koreksi —
+          // ditambahkan kembali di sini. SiLPA Kinerja hanya dipakai pada
+          // jalur lama ini (sekolah tanpa saldo awal Januari di database).
+          sisaSaldoBKU = sum(subs, (t) => t.saldoAkhir) + regulerKoreksiTotal + kinerjaKoreksiTotal + (silpaMap[npsn] || 0);
+        }
         return {
           npsn,
           nama_sekolah,
-          saldoAwalBank: sum(subs, (t) => t.saldoAwalBank),
-          saldoAwalTunai: sum(subs, (t) => t.saldoAwalTunai),
+          saldoAwalBank,
+          saldoAwalTunai,
           pendapatanReguler: sum(reguler, (t) => t.pendapatan),
           pendapatanKinerja: sum(kinerja, (t) => t.pendapatan),
           reguler: regulerBreakdown,
           kinerja: kinerjaBreakdown,
-          // The koreksi's cash inflow never appears as its own labeled row
-          // in the BKU, so the file's own "Jumlah" (and thus saldoAkhir)
-          // understates the true bank balance by exactly that amount —
-          // add it back here to get the real Sisa Saldo Buku Kas Umum.
-          sisaSaldoBKU: sum(subs, (t) => t.saldoAkhir) + regulerKoreksiTotal + kinerjaKoreksiTotal,
+          sisaSaldoBKU,
+          dariDatabase: !!(anchor && period?.type === "month"),
+          bulanKosong,
         };
       })
       .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""));
@@ -445,6 +540,26 @@ function Dashboard({ password, onLogout }) {
       alert("Pilih periode satu bulan (bukan semester/tahunan) untuk unduhan ini, karena Saldo R.Koran berupa data per tanggal tertentu.");
       return;
     }
+
+    // Pemeriksaan sebelum unduh: rantai saldo bergantung pada submission
+    // bulan-bulan sebelumnya. Bulan yang belum di-submit dianggap tanpa
+    // mutasi, jadi angkanya bisa meleset — beri tahu dulu.
+    const allRecap = JENJANG_ORDER.flatMap((j) => buildOfficialRecap(completeFiltered.filter((s) => jenjangOf(s) === j)));
+    const berlubang = allRecap.filter((r) => r.bulanKosong.length > 0);
+    const tanpaAnchor = allRecap.filter((r) => !r.dariDatabase);
+    const pesan = [];
+    if (berlubang.length > 0) {
+      pesan.push(
+        `${berlubang.length} sekolah belum submit sebagian bulan sebelumnya (mis. ${berlubang[0].nama_sekolah}: ${berlubang[0].bulanKosong.join(", ")}). Bulan itu dianggap tanpa transaksi sehingga Saldo Awal/Sisa Saldo bisa tidak akurat.`
+      );
+    }
+    if (tanpaAnchor.length > 0) {
+      pesan.push(
+        `${tanpaAnchor.length} sekolah belum punya Saldo Awal Januari di database, jadi memakai saldo dari file BKU (cara lama).`
+      );
+    }
+    if (pesan.length > 0 && !confirm(pesan.join("\n\n") + "\n\nLanjut unduh?")) return;
+
     const wb = XLSX.utils.book_new();
     for (const jenjang of JENJANG_ORDER) {
       const subsForJenjang = completeFiltered.filter((s) => jenjangOf(s) === jenjang);

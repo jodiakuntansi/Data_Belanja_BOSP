@@ -60,7 +60,11 @@ function isSiplahPassthrough(uraian) {
 function isPassThroughIncome(uraian) {
   if (!uraian) return false;
   const u = uraian.trim().toLowerCase();
-  return u.includes("siplah") || /\bpph\b/.test(u) || /\bpajak\b/.test(u);
+  // "Bunga Bank"/"Jasa Giro" is always followed by an equal "Pajak Bunga"
+  // deduction (which is already excluded from Belanja for having no kode
+  // rekening), so the pair nets to zero for the school. Excluding only
+  // the Pajak side left Pendapatan overstated by exactly the interest.
+  return u.includes("siplah") || /\bpph\b/.test(u) || /\bpajak\b/.test(u) || /bunga\s*bank|jasa\s*giro/.test(u);
 }
 
 function cellStr(v) {

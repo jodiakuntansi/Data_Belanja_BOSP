@@ -52,6 +52,39 @@ create table if not exists saldo_rkoran (
   primary key (npsn, tahun, bulan)
 );
 
+-- SiLPA (sisa dana) BOSP Kinerja dari tahun sebelumnya yang masih
+-- mengendap di rekening sekolah, walau sekolah itu tidak lagi menerima
+-- alokasi Kinerja tahun ini. Diisi manual langsung lewat Supabase (tidak
+-- ada form di aplikasi), sekali per sekolah per tahun anggaran — nilai
+-- ini ditambahkan ke "Sisa Saldo Buku Kas Umum" di Rekapan BOSP Resmi
+-- supaya cocok dengan Saldo R.Koran yang sesungguhnya.
+create table if not exists silpa_kinerja (
+  npsn text not null references sekolah(npsn),
+  tahun text not null,
+  nominal numeric not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (npsn, tahun)
+);
+
+-- Saldo awal JANUARI (BOSP Reguler + Kinerja digabung) per sekolah per
+-- tahun anggaran, diisi manual langsung di Supabase (tidak ada form di
+-- aplikasi). Dipakai sebagai titik awal Rekapan BOSP Resmi: Januari
+-- memakai angka ini, Februari dst. otomatis = saldo akhir bulan
+-- sebelumnya (saldo awal + pendapatan - belanja + koreksi).
+-- Karena angka ini sudah mencakup sisa dana Kinerja tahun lalu, sekolah
+-- yang punya baris di sini TIDAK lagi memakai silpa_kinerja (supaya
+-- tidak terhitung dua kali).
+--   saldo_arkas = saldo di rekening/ARKAS, saldo_tunai = kas tunai.
+--   Kalau tidak dipisah, isi semuanya di saldo_arkas dan biarkan tunai 0.
+create table if not exists saldo_awal_januari (
+  npsn text not null references sekolah(npsn),
+  tahun text not null,
+  saldo_arkas numeric not null default 0,
+  saldo_tunai numeric not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (npsn, tahun)
+);
+
 -- Row Level Security aktif dengan TANPA kebijakan publik apa pun.
 -- Semua akses baca/tulis hanya lewat API routes aplikasi ini, yang
 -- memakai service role key di server (lihat lib/supabaseAdmin.js).
@@ -59,3 +92,5 @@ create table if not exists saldo_rkoran (
 alter table sekolah enable row level security;
 alter table submissions enable row level security;
 alter table saldo_rkoran enable row level security;
+alter table silpa_kinerja enable row level security;
+alter table saldo_awal_januari enable row level security;
