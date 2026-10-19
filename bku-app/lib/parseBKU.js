@@ -144,12 +144,26 @@ export function parseBKU(rows) {
 // Used for the PDF path: header info comes pre-extracted from the server
 // (see app/api/parse-pdf/route.js), only the transaction table itself
 // needs the shared row-parsing logic below.
+const NAMA_BULAN = [
+  "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI",
+  "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER",
+];
+
+// Judul BKU kadang terbaca dengan huruf lain menempel di belakang nama
+// bulan (mis. "SEPTEMBERF"). Cocokkan dengan 12 nama bulan yang valid
+// dan ambil yang cocok di awal; kalau tidak ada yang cocok, kembalikan
+// apa adanya supaya kesalahannya tetap kelihatan.
+export function normalizeBulan(raw) {
+  const v = String(raw || "").trim().toUpperCase();
+  return NAMA_BULAN.find((b) => v.startsWith(b)) || v;
+}
+
 export function parseBKUFromPDF({ npsn, namaSekolah, alamat, bulan, tahun, sumberDana, sumberDanaRaw, rows }) {
   const header = {
     npsn: npsn || "",
     namaSekolah: namaSekolah || "",
     alamat: alamat || "",
-    bulan: bulan || "",
+    bulan: normalizeBulan(bulan),
     tahun: tahun || "",
     sumberDana: sumberDana || "REGULER",
     sumberDanaRaw: sumberDanaRaw || "",
@@ -212,7 +226,7 @@ function extractHeaderInfo(rows) {
     }
     const bm = s.match(/BULAN\s*:\s*([A-Z]+)/i);
     const tm = s.match(/TAHUN\s*:\s*(\d{4})/i);
-    if (bm) bulan = bm[1].toUpperCase();
+    if (bm) bulan = normalizeBulan(bm[1]);
     if (tm) tahun = tm[1];
   }
 
