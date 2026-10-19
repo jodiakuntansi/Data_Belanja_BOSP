@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import Link from "next/link";
 import { parseBKU, parseBKUFromPDF, CATEGORY_LABEL, classifyKode, getUraian } from "../../lib/parseBKU";
-import { Wallet, Plus, X } from "lucide-react";
+import { Wallet, Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
 
 const CATEGORY_TW = {
   modal_peralatan_mesin: "text-gold",
@@ -220,6 +220,162 @@ function LoginForm({ onLogin }) {
   );
 }
 
+const BULAN_LIST = [
+  "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI",
+  "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER",
+];
+const bulanLabel = (b) => b.charAt(0) + b.slice(1).toLowerCase();
+
+// Kartu status: bulan apa saja yang sudah/belum diupload sekolah ini.
+// Bulan yang wajib = Januari s.d. bulan lalu (BKU bulan berjalan belum
+// selesai). BOSP Kinerja hanya ditagih kalau sekolah ini pernah upload
+// Kinerja di tahun yang sama — tidak semua sekolah menerima Kinerja,
+// jadi sekolah tanpa Kinerja tidak akan diminta apa-apa soal itu.
+function StatusUpload({ sekolah, refreshKey }) {
+  const now = new Date();
+  const tahun = String(now.getFullYear());
+  const wajibSampai = now.getMonth(); // 0-based: Oktober => 9 bulan wajib (Jan-Sep)
+  const [subs, setSubs] = useState(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let batal = false;
+    setError(false);
+    fetch("/api/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ npsn: sekolah.npsn, pin: sekolah.pin, tahun }),
+    })
+      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (batal) return;
+        if (!ok) setError(true);
+        else setSubs(d.submissions || []);
+      })
+      .catch(() => !batal && setError(true));
+    return () => {
+      batal = true;
+    };
+  }, [sekolah.npsn, sekolah.pin, tahun, refreshKey]);
+
+  if (error) {
+    return (
+      <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4 text-xs text-inksoft">
+        Status upload belum bisa dimuat. Coba muat ulang halaman.
+      </div>
+    );
+  }
+  if (!subs) {
+    return (
+      <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4 text-xs text-inksoft">
+        Memuat status upload...
+      </div>
+    );
+  }
+
+  const ada = (bulan, sumber) => subs.find((x) => x.bulan === bulan && x.sumber_dana === sumber);
+  const punyaKinerja = subs.some((x) => x.sumber_dana === "KINERJA");
+  const sumberList = punyaKinerja ? ["REGULER", "KINERJA"] : ["REGULER"];
+  const bulanWajib = BULAN_LIST.slice(0, wajibSampai);
+
+  const kurang = [];
+  const perluUlang = [];
+  for (const b of bulanWajib) {
+    for (const sd of sumberList) {
+      const row = ada(b, sd);
+      if (!row) kurang.push({ bulan: b, sumber: sd });
+      else if (row.integrity_ok === false) perluUlang.push({ bulan: b, sumber: sd });
+    }
+  }
+  const sumberLabel = (sd) => (sd === "KINERJA" ? "BOSP Kinerja" : "BOSP Reguler");
+  const semuaBeres = kurang.length === 0 && perluUlang.length === 0;
+
+  return (
+    <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+      <div className="font-extrabold text-ink mb-3">Status upload BKU {tahun}</div>
+
+      {bulanWajib.length === 0 ? (
+        <div className="text-sm text-inksoft">Belum ada bulan yang wajib diunggah untuk tahun ini.</div>
+      ) : semuaBeres ? (
+        <div className="flex items-center gap-2 text-sm text-green font-semibold">
+          <CheckCircle2 size={18} />
+          Semua BKU {bulanLabel(bulanWajib[0])}–{bulanLabel(bulanWajib[bulanWajib.length - 1])} sudah diunggah.
+        </div>
+      ) : (
+        <>
+          {kurang.length > 0 && (
+            <div className="rounded-xl bg-red/10 border border-red/20 p-3 mb-3">
+              <div className="flex items-center gap-2 text-sm font-bold text-red mb-1.5">
+                <AlertCircle size={16} />
+                Belum diunggah ({kurang.length})
+              </div>
+              <ul className="text-sm text-ink space-y-0.5">
+                {kurang.map((k) => (
+                  <li key={k.bulan + k.sumber}>
+                    {bulanLabel(k.bulan)} — <span className="text-inksoft">{sumberLabel(k.sumber)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {perluUlang.length > 0 && (
+            <div className="rounded-xl bg-gold/10 border border-gold/30 p-3 mb-3">
+              <div className="flex items-center gap-2 text-sm font-bold text-gold mb-1.5">
+                <AlertCircle size={16} />
+                Perlu diunggah ulang — data tidak terverifikasi ({perluUlang.length})
+              </div>
+              <ul className="text-sm text-ink space-y-0.5">
+                {perluUlang.map((k) => (
+                  <li key={k.bulan + k.sumber}>
+                    {bulanLabel(k.bulan)} — <span className="text-inksoft">{sumberLabel(k.sumber)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-2">
+        {BULAN_LIST.map((b, i) => {
+          const wajib = i < wajibSampai;
+          return (
+            <div key={b} className="rounded-xl border border-border bg-paper px-2.5 py-2">
+              <div className="text-[11px] font-semibold text-ink">{bulanLabel(b)}</div>
+              {sumberList.map((sd) => {
+                const row = ada(b, sd);
+                let teks = "–";
+                let warna = "text-inksoft";
+                if (row && row.integrity_ok === false) {
+                  teks = "Cek ulang";
+                  warna = "text-gold";
+                } else if (row) {
+                  teks = "✓ Sudah";
+                  warna = "text-green";
+                } else if (wajib) {
+                  teks = "Belum";
+                  warna = "text-red";
+                }
+                return (
+                  <div key={sd} className="text-[10px] flex justify-between gap-1">
+                    <span className="text-inksoft">{sd === "KINERJA" ? "Kinerja" : "Reguler"}</span>
+                    <span className={`font-semibold ${warna}`}>{teks}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+      {!punyaKinerja && (
+        <div className="text-[11px] text-inksoft mt-3">
+          BOSP Kinerja hanya ditampilkan jika sekolah Anda sudah pernah mengunggahnya tahun ini.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UploadFlow({ sekolah, onLogout }) {
   const [fileName, setFileName] = useState("");
   const [parsing, setParsing] = useState(false);
@@ -230,6 +386,7 @@ function UploadFlow({ sekolah, onLogout }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const handleFile = useCallback(async (f) => {
     setFileName(f.name);
@@ -298,7 +455,10 @@ function UploadFlow({ sekolah, onLogout }) {
       });
       const data = await res.json();
       if (!res.ok) setSaveError(data.error || "Gagal menyimpan.");
-      else setSaved(true);
+      else {
+        setSaved(true);
+        setRefreshKey((k) => k + 1);
+      }
     } catch {
       setSaveError("Gagal menghubungi server.");
     }
@@ -317,6 +477,8 @@ function UploadFlow({ sekolah, onLogout }) {
             Keluar
           </button>
         </div>
+
+        <StatusUpload sekolah={sekolah} refreshKey={refreshKey} />
 
         <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
           <div className="font-extrabold text-ink mb-3">Unggah Buku Kas Umum (BKU)</div>
