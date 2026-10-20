@@ -883,58 +883,55 @@ function Dashboard({ password, onLogout }) {
           <div className="bg-card border border-border rounded-2xl shadow-sm p-5">Memuat data...</div>
         ) : (
           <>
-            <div className="flex gap-3 mb-4 flex-wrap">
-              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
-                <div className="text-xs text-inksoft uppercase mb-1">Sekolah submit</div>
-                <div className="font-mono text-lg font-bold text-ink">{filtered.length}{roster.length ? ` / ${roster.length}` : ""}</div>
-              </div>
-              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
-                <div className="text-xs text-inksoft uppercase mb-1">Modal - Peralatan & Mesin</div>
-                <div className="font-mono text-lg font-bold text-gold">{fmtRp(totalModalPeralatanMesin)}</div>
-              </div>
-              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
-                <div className="text-xs text-inksoft uppercase mb-1">Modal - Aset Tetap Lainnya</div>
-                <div className="font-mono text-lg font-bold text-blue">{fmtRp(totalModalAsetLainnya)}</div>
-              </div>
-              <div className="flex-1 min-w-[140px] bg-card border border-border rounded-2xl shadow-sm p-4">
-                <div className="text-xs text-inksoft uppercase mb-1">Total belanja barang & jasa</div>
-                <div className="font-mono text-lg font-bold text-green">{fmtRp(totalBarangJasa)}</div>
-              </div>
-            </div>
-
             <div className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
-              <div className="font-extrabold text-ink mb-3">Ringkasan per jenjang</div>
-              <div className="grid grid-cols-[1fr_70px_110px_110px_110px_70px] text-xs text-inksoft uppercase pb-2 border-b border-border">
-                <span>Jenjang</span><span className="text-right">Sekolah</span><span className="text-right">Modal-PM</span><span className="text-right">Modal-ATL</span><span className="text-right">Barang & jasa</span><span className="text-right">Belum</span>
+              <div className="flex justify-between items-baseline flex-wrap gap-1 mb-3">
+                <div className="font-extrabold text-ink">Status submit</div>
+                <div className="text-sm text-inksoft">
+                  <span className="font-mono font-bold text-ink">{filtered.length}</span>
+                  {roster.length ? ` dari ${roster.length}` : ""} sekolah sudah submit
+                  {roster.length ? (
+                    <>
+                      {" · "}
+                      <span className={`font-semibold ${belum.length ? "text-red" : "text-green"}`}>{belum.length} belum</span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_80px_80px] text-[11px] text-inksoft uppercase pb-1 border-b border-border">
+                <span>Jenjang</span>
+                <span className="text-right">Sudah</span>
+                <span className="text-right">Belum</span>
               </div>
               {jenjangGroups.map((jg) => (
                 <div key={jg.jenjang}>
                   <div
                     onClick={() => setExpandedJenjang((j) => (j === jg.jenjang ? null : jg.jenjang))}
-                    className="grid grid-cols-[1fr_70px_110px_110px_110px_70px] items-center text-sm py-2 border-b border-border last:border-0 cursor-pointer hover:bg-paper"
+                    className="grid grid-cols-[minmax(0,1fr)_80px_80px] items-center text-[13px] py-2 border-b border-border last:border-0 cursor-pointer hover:bg-paper"
                   >
                     <span className="font-semibold text-ink flex items-center gap-1">
                       <span className="text-inksoft text-xs">{expandedJenjang === jg.jenjang ? "▾" : "▸"}</span>
                       {jg.jenjang}
                     </span>
-                    <span className="text-right text-inksoft">{jg.schools.length}{jg.rosterCount ? ` / ${jg.rosterCount}` : ""}</span>
-                    <span className="text-right font-mono text-gold">{fmtRp(jg.totalModalPeralatanMesin)}</span>
-                    <span className="text-right font-mono text-blue">{fmtRp(jg.totalModalAsetLainnya)}</span>
-                    <span className="text-right font-mono text-green">{fmtRp(jg.totalBarangJasa)}</span>
-                    <span className={`text-right font-semibold ${jg.belum.length ? "text-red" : "text-green"}`}>{jg.rosterCount ? jg.belum.length : "–"}</span>
+                    <span className="text-right font-mono text-green">
+                      {jg.schools.length}
+                      {jg.rosterCount ? <span className="text-inksoft"> / {jg.rosterCount}</span> : null}
+                    </span>
+                    <span className={`text-right font-mono font-semibold ${jg.belum.length ? "text-red" : "text-green"}`}>
+                      {jg.rosterCount ? jg.belum.length : "–"}
+                    </span>
                   </div>
                   {expandedJenjang === jg.jenjang && (
-                    <div className="pb-3 pl-4 pr-1 grid grid-cols-2 gap-4">
+                    <div className="pb-3 pl-4 pr-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <div className="text-xs font-semibold text-green mb-1.5">Sudah submit ({jg.schools.length})</div>
                         {jg.schools.length === 0 ? (
                           <div className="text-xs text-inksoft">Belum ada.</div>
                         ) : (
                           <div className="flex flex-col gap-1">
-                            {jg.schools
-                              .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""))
-                              .map((s) => (
-                                <div key={s.npsn} className="text-xs text-ink bg-green/5 rounded px-2 py-1">{s.nama_sekolah}</div>
+                            {[...jg.schools]
+                              .sort((x, y) => (x.nama_sekolah || "").localeCompare(y.nama_sekolah || ""))
+                              .map((sc) => (
+                                <div key={sc.npsn} className="text-xs text-ink bg-green/5 rounded px-2 py-1">{sc.nama_sekolah}</div>
                               ))}
                           </div>
                         )}
@@ -947,10 +944,10 @@ function Dashboard({ password, onLogout }) {
                           <div className="text-xs text-inksoft">Semua sudah submit. 🎉</div>
                         ) : (
                           <div className="flex flex-col gap-1">
-                            {jg.belum
-                              .sort((a, b) => (a.nama || "").localeCompare(b.nama || ""))
-                              .map((s) => (
-                                <div key={s.npsn} className="text-xs text-ink bg-red/5 rounded px-2 py-1">{s.nama}</div>
+                            {[...jg.belum]
+                              .sort((x, y) => (x.nama || "").localeCompare(y.nama || ""))
+                              .map((sc) => (
+                                <div key={sc.npsn} className="text-xs text-ink bg-red/5 rounded px-2 py-1">{sc.nama}</div>
                               ))}
                           </div>
                         )}
@@ -1044,10 +1041,10 @@ function Dashboard({ password, onLogout }) {
                       <div className="text-sm text-inksoft">Belum ada submisi {sg.jenjang} untuk periode ini.</div>
                     ) : (
                       <div className="overflow-x-auto">
-                        <div className="min-w-[680px]">
-                          <div className="grid grid-cols-[minmax(170px,1fr)_116px_116px_116px_116px_32px] text-[11px] text-inksoft uppercase pb-1 border-b border-border">
+                        <div className="min-w-[710px]">
+                          <div className="grid gap-x-2 grid-cols-[minmax(170px,1fr)_116px_116px_116px_116px_32px] text-[11px] text-inksoft uppercase pb-1 border-b border-border">
                             <span className="sticky left-0 bg-card">Sekolah</span>
-                            <span className="text-right">Saldo awal (Rp)</span>
+                            <span className="text-right">Saldo awal</span>
                             <span className="text-right">Pendapatan</span>
                             <span className="text-right">Belanja</span>
                             <span className="text-right">Saldo akhir</span>
@@ -1056,7 +1053,7 @@ function Dashboard({ password, onLogout }) {
                           {sg.rows.map(({ sch, r }) => {
                             const balance = Math.abs(r.selisih) <= 1;
                             return (
-                              <div key={sch.npsn} className="grid grid-cols-[minmax(170px,1fr)_116px_116px_116px_116px_32px] items-center text-[13px] py-2 border-b border-border">
+                              <div key={sch.npsn} className="grid gap-x-2 grid-cols-[minmax(170px,1fr)_116px_116px_116px_116px_32px] items-center text-[13px] py-2 border-b border-border">
                                 <span className="sticky left-0 bg-card pr-2 text-ink">{sch.nama_sekolah} <span className="text-inksoft text-xs">({sch.npsn})</span></span>
                                 <span className="text-right font-mono text-ink">{fmtAngka(r.saldoAwal)}{!r.dariDatabase && <span className="text-gold">*</span>}</span>
                                 <span className="text-right font-mono text-green">{fmtAngka(r.pendapatan)}</span>
@@ -1077,7 +1074,7 @@ function Dashboard({ password, onLogout }) {
                               </div>
                             );
                           })}
-                          <div className="grid grid-cols-[minmax(170px,1fr)_116px_116px_116px_116px_32px] items-center text-[13px] py-2 font-bold bg-paper">
+                          <div className="grid gap-x-2 grid-cols-[minmax(170px,1fr)_116px_116px_116px_116px_32px] items-center text-[13px] py-2 font-bold bg-paper">
                             <span className="sticky left-0 bg-paper pl-1 text-ink">Total {sg.jenjang}</span>
                             <span className="text-right font-mono text-ink">{fmtAngka(sg.tot.saldoAwal)}</span>
                             <span className="text-right font-mono text-green">{fmtAngka(sg.tot.pendapatan)}</span>
@@ -1091,89 +1088,141 @@ function Dashboard({ password, onLogout }) {
                   </div>
                 ))
               : view === "sekolah"
-              ? jenjangGroups.map((jg) => (
-                  <div key={jg.jenjang} className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
-                    <div className="font-extrabold text-ink mb-3">{jg.jenjang} <span className="text-xs font-normal text-inksoft">· {jg.schools.length} sekolah submit</span></div>
-                    {jg.schools.length === 0 ? (
-                      <div className="text-sm text-inksoft">Belum ada submisi {jg.jenjang} untuk periode ini.</div>
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-[1fr_95px_95px_95px_60px] text-[11px] text-inksoft uppercase pb-1 border-b border-border">
-                          <span>Sekolah</span><span className="text-right">Modal-PM</span><span className="text-right">Modal-ATL</span><span className="text-right">Barang & jasa</span><span className="text-right">Valid</span>
-                        </div>
-                      {jg.schools.sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || "")).map((s) => (
-                        <div key={s.npsn}>
-                          <div
-                            onClick={() => setExpandedRow((r) => (r === s.npsn ? null : s.npsn))}
-                            className="grid grid-cols-[1fr_95px_95px_95px_60px] items-center text-sm py-2 border-b border-border cursor-pointer"
-                          >
-                            <span className="text-ink">{s.nama_sekolah} <span className="text-inksoft text-xs">({s.npsn})</span></span>
-                            <span className="text-right font-mono text-gold">{fmtRp(s.totals?.totalModalPeralatanMesin)}</span>
-                            <span className="text-right font-mono text-blue">{fmtRp(s.totals?.totalModalAsetLainnya)}</span>
-                            <span className="text-right font-mono text-green">{fmtRp(s.totals?.totalBarangJasa)}</span>
-                            <span className={`text-center ${s.integrity_ok ? "text-green" : "text-red"}`}>{s.integrity_ok ? "✓" : "!"}</span>
-                          </div>
-                          {expandedRow === s.npsn && (
-                            <div className="pl-3 py-2 text-xs text-inksoft">
-                              <div className="grid grid-cols-4 gap-2 mb-3 pb-3 border-b border-border">
-                                <div>
-                                  <div className="text-[10px] uppercase">Saldo Awal</div>
-                                  <div className="font-mono font-semibold text-ink">{fmtRp(s.totals?.saldoAwal)}</div>
-                                </div>
-                                <div>
-                                  <div className="text-[10px] uppercase">Pendapatan</div>
-                                  <div className="font-mono font-semibold text-green">+{fmtRp(pendapatanOf(s.totals))}</div>
-                                </div>
-                                <div>
-                                  <div className="text-[10px] uppercase">Belanja</div>
-                                  <div className="font-mono font-semibold text-red">-{fmtRp(s.totals?.belanjaTotal)}</div>
-                                </div>
-                                <div>
-                                  <div className="text-[10px] uppercase">Saldo Akhir</div>
-                                  <div className="font-mono font-semibold text-ink">{fmtRp(s.totals?.saldoAkhir)}</div>
-                                </div>
-                              </div>
-                              {(s.rincian || []).map((g) => (
-                                <div key={g.kode} className="py-1 border-b border-border last:border-0">
-                                  <div className="flex justify-between">
-                                    <span className="font-mono text-ink">{g.kode} <span className={CATEGORY_TW[g.kategori]}>— {CATEGORY_LABEL[g.kategori]}</span></span>
-                                    <span className="font-mono font-semibold text-ink">{fmtRp(g.total)}</span>
-                                  </div>
-                                  <div className="mt-0.5">{g.uraian || "Uraian tidak ditemukan"}</div>
-                                </div>
-                              ))}
-                              <div className="mt-2">Bulan: {(s.bulanList || []).join(", ")} · terakhir dikirim {new Date(s.submitted_at).toLocaleString("id-ID")}</div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      </>
-                    )}
-                  </div>
-                ))
-              : jenjangGroups.map((jg) => {
-                  const kodeRincian = buildKodeAgg(jg.schools);
+              ? jenjangGroups.map((jg) => {
+                  const rows = [...jg.schools].sort((x, y) => (x.nama_sekolah || "").localeCompare(y.nama_sekolah || ""));
+                  const COLS = "grid-cols-[minmax(170px,1fr)_104px_104px_104px_104px_32px]";
+                  const total = (k) => rows.reduce((acc, x) => acc + (x.totals?.[k] || 0), 0);
+                  const totalSemua = (x) => (x.totals?.totalModalPeralatanMesin || 0) + (x.totals?.totalModalAsetLainnya || 0) + (x.totals?.totalBarangJasa || 0);
                   return (
                     <div key={jg.jenjang} className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
-                      <div className="font-extrabold text-ink mb-3">{jg.jenjang}</div>
+                      <div className="font-extrabold text-ink mb-3">
+                        {jg.jenjang} <span className="text-xs font-normal text-inksoft">· {rows.length} sekolah submit</span>
+                      </div>
+                      {rows.length === 0 ? (
+                        <div className="text-sm text-inksoft">Belum ada submisi {jg.jenjang} untuk periode ini.</div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <div className="min-w-[660px]">
+                            <div className={`grid gap-x-2 ${COLS} text-[11px] text-inksoft uppercase pb-1 border-b border-border`}>
+                              <span className="sticky left-0 bg-card">Sekolah</span>
+                              <span className="text-right">Modal-PM</span>
+                              <span className="text-right">Modal-ATL</span>
+                              <span className="text-right">Barang & jasa</span>
+                              <span className="text-right">Total</span>
+                              <span className="text-center">Valid</span>
+                            </div>
+                            {rows.map((sc) => (
+                              <div key={sc.npsn}>
+                                <div
+                                  onClick={() => setExpandedRow((r) => (r === sc.npsn ? null : sc.npsn))}
+                                  className={`group grid gap-x-2 ${COLS} items-center text-[13px] py-2 border-b border-border cursor-pointer hover:bg-paper`}
+                                >
+                                  <span className="sticky left-0 bg-card group-hover:bg-paper pr-2 text-ink">
+                                    <span className="text-inksoft text-xs">{expandedRow === sc.npsn ? "▾" : "▸"}</span> {sc.nama_sekolah}{" "}
+                                    <span className="text-inksoft text-xs">({sc.npsn})</span>
+                                  </span>
+                                  <span className="text-right font-mono text-gold">{fmtAngka(sc.totals?.totalModalPeralatanMesin)}</span>
+                                  <span className="text-right font-mono text-blue">{fmtAngka(sc.totals?.totalModalAsetLainnya)}</span>
+                                  <span className="text-right font-mono text-green">{fmtAngka(sc.totals?.totalBarangJasa)}</span>
+                                  <span className="text-right font-mono font-semibold text-ink">{fmtAngka(totalSemua(sc))}</span>
+                                  <span
+                                    className={`text-center ${sc.integrity_ok ? "text-green" : "text-red"}`}
+                                    title={sc.integrity_ok ? "Data BKU terverifikasi." : "Data BKU tidak terverifikasi — minta sekolah upload ulang."}
+                                  >
+                                    {sc.integrity_ok ? "✓" : "!"}
+                                  </span>
+                                </div>
+                                {expandedRow === sc.npsn && (
+                                  <div className="pl-4 pr-1 py-2 text-xs text-inksoft border-b border-border bg-paper">
+                                    {(sc.rincian || []).length === 0 ? (
+                                      <div>Tidak ada belanja terklasifikasi.</div>
+                                    ) : (
+                                      (sc.rincian || []).map((g) => (
+                                        <div key={g.kode} className="py-1 border-b border-border last:border-0">
+                                          <div className="flex justify-between gap-3">
+                                            <span className="font-mono text-ink">
+                                              {g.kode} <span className={CATEGORY_TW[g.kategori]}>— {CATEGORY_LABEL[g.kategori]}</span>
+                                            </span>
+                                            <span className="font-mono font-semibold text-ink shrink-0">{fmtAngka(g.total)}</span>
+                                          </div>
+                                          <div className="mt-0.5">{g.uraian || "Uraian tidak ditemukan"}</div>
+                                        </div>
+                                      ))
+                                    )}
+                                    <div className="mt-2">
+                                      Bulan: {(sc.bulanList || []).join(", ")} · terakhir dikirim {new Date(sc.submitted_at).toLocaleString("id-ID")}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                            <div className={`grid gap-x-2 ${COLS} items-center text-[13px] py-2 font-bold bg-paper`}>
+                              <span className="sticky left-0 bg-paper pl-1 text-ink">Total {jg.jenjang}</span>
+                              <span className="text-right font-mono text-gold">{fmtAngka(total("totalModalPeralatanMesin"))}</span>
+                              <span className="text-right font-mono text-blue">{fmtAngka(total("totalModalAsetLainnya"))}</span>
+                              <span className="text-right font-mono text-green">{fmtAngka(total("totalBarangJasa"))}</span>
+                              <span className="text-right font-mono text-ink">
+                                {fmtAngka(rows.reduce((acc, x) => acc + totalSemua(x), 0))}
+                              </span>
+                              <span />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              : jenjangGroups.map((jg) => {
+                  const kodeRincian = buildKodeAgg(jg.schools);
+                  const COLS = "grid-cols-[152px_minmax(200px,1fr)_96px_60px_112px]";
+                  const KAT_SHORT = {
+                    modal_peralatan_mesin: "Modal-PM",
+                    modal_aset_lainnya: "Modal-ATL",
+                    barang_jasa: "Barang & jasa",
+                    tak_terklasifikasi: "Tak terklasifikasi",
+                  };
+                  return (
+                    <div key={jg.jenjang} className="bg-card border border-border rounded-2xl shadow-sm p-5 mb-4">
+                      <div className="font-extrabold text-ink mb-3">
+                        {jg.jenjang} <span className="text-xs font-normal text-inksoft">· {kodeRincian.length} kode rekening</span>
+                      </div>
                       {kodeRincian.length === 0 ? (
                         <div className="text-sm text-inksoft">Belum ada submisi {jg.jenjang} untuk periode ini.</div>
                       ) : (
-                        kodeRincian.map((g) => (
-                          <div key={g.kode} className="py-2 border-b border-border last:border-0">
-                            <div className="grid grid-cols-[1fr_130px_80px_100px] items-center text-sm">
-                              <span className="font-mono text-ink">{g.kode}</span>
-                              <span className={`text-xs font-semibold ${CATEGORY_TW[g.kategori]}`}>{CATEGORY_LABEL[g.kategori]}</span>
-                              <span className="text-right text-inksoft text-xs">{g.jumlahSekolah} sekolah</span>
-                              <span className="text-right font-mono font-semibold text-ink">{fmtRp(g.total)}</span>
+                        <div className="overflow-x-auto">
+                          <div className="min-w-[660px]">
+                            <div className={`grid gap-x-2 ${COLS} text-[11px] text-inksoft uppercase pb-1 border-b border-border`}>
+                              <span className="sticky left-0 bg-card">Kode rekening</span>
+                              <span>Uraian</span>
+                              <span>Kategori</span>
+                              <span className="text-right">Sekolah</span>
+                              <span className="text-right">Total (Rp)</span>
                             </div>
-                            <div className="text-xs text-inksoft mt-1">{g.uraian || "(uraian tidak ditemukan)"}</div>
+                            {kodeRincian.map((g) => (
+                              <div key={g.kode} className={`grid gap-x-2 ${COLS} items-start text-[13px] py-2 border-b border-border`}>
+                                <span className="sticky left-0 bg-card pr-2 font-mono text-ink">{g.kode}</span>
+                                <span className="text-inksoft text-xs pr-3 pt-0.5">{g.uraian || "(uraian tidak ditemukan)"}</span>
+                                <span className={`text-xs font-semibold pt-0.5 ${CATEGORY_TW[g.kategori]}`}>{KAT_SHORT[g.kategori] || g.kategori}</span>
+                                <span className="text-right text-inksoft text-xs pt-0.5">{g.jumlahSekolah}</span>
+                                <span className="text-right font-mono font-semibold text-ink">{fmtAngka(g.total)}</span>
+                              </div>
+                            ))}
+                            <div className={`grid gap-x-2 ${COLS} items-center text-[13px] py-2 font-bold bg-paper`}>
+                              <span className="sticky left-0 bg-paper pl-1 text-ink">Total {jg.jenjang}</span>
+                              <span />
+                              <span />
+                              <span />
+                              <span className="text-right font-mono text-ink">{fmtAngka(kodeRincian.reduce((acc, g) => acc + g.total, 0))}</span>
+                            </div>
                           </div>
-                        ))
+                        </div>
                       )}
                     </div>
                   );
                 })}
+            {view === "sekolah" && (
+              <div className="text-[11px] text-inksoft mb-6">Semua angka dalam rupiah.</div>
+            )}
             {view === "saldo" && (
               <div className="text-[11px] text-inksoft mb-6">
                 Semua angka dalam rupiah. Belanja = belanja bersih setelah koreksi pengembalian. Pendapatan hanya dari Terima Dana BOSP (PPh, PPN, SIPLah, bunga bank tidak dihitung).{" "}
