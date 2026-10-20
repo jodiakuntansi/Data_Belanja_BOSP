@@ -10,10 +10,10 @@ export default function Home() {
             <Wallet size={26} className="text-white" />
           </div>
           <h1 className="text-white font-extrabold text-2xl tracking-tight">
-            Klasifikasi Belanja BKU
+            SIMBOSP
           </h1>
           <p className="text-white/80 text-sm mt-2 max-w-xs mx-auto">
-            Rekap belanja modal & barang/jasa otomatis dari BKU sekolah
+            Sistem Informasi Monitoring BOSP — rekap saldo, pendapatan, dan belanja otomatis dari BKU sekolah
           </p>
           <div className="flex items-center justify-center gap-2 mt-5">
             {["TK/PAUD", "SD", "SMP"].map((j) => (

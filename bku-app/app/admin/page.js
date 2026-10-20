@@ -822,7 +822,7 @@ function Dashboard({ password, onLogout }) {
         <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
           <div>
             <h1 className="font-extrabold text-xl text-ink">Rekap dinas</h1>
-            <p className="text-xs text-inksoft">Klasifikasi belanja BKU — TK/PAUD, SD, SMP</p>
+            <p className="text-xs text-inksoft">SIMBOSP — TK/PAUD, SD, SMP</p>
           </div>
           <button onClick={onLogout} className="text-xs text-inksoft border border-border rounded-xl px-3 py-1.5">Keluar</button>
         </div>

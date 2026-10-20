@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Klasifikasi Belanja BKU",
-  description: "Klasifikasi belanja modal & barang/jasa dari Buku Kas Umum sekolah",
+  title: "SIMBOSP",
+  description: "Sistem Informasi Monitoring BOSP — rekap saldo, pendapatan, dan belanja BOSP sekolah",
 };
 
 export default function RootLayout({ children }) {

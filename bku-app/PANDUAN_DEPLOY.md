@@ -1,4 +1,4 @@
-# Panduan Deploy — Klasifikasi Belanja BKU
+# Panduan Deploy — SIMBOSP
 
 Panduan ini mengasumsikan Bapak/Ibu sudah punya akun Vercel dan Supabase, tapi belum pernah pakai keduanya. Ikuti urutan ini persis.
 
