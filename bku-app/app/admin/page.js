@@ -525,7 +525,7 @@ function Dashboard({ session, onLogout }) {
     return { jenjang: jg.jenjang, rows, tot, belum: jg.belum.length };
   });
 
-  function buildOfficialRecap(subsForJenjang) {
+  function buildOfficialRecap(subsForJenjang, per = period) {
     const bySchool = {};
     for (const s of subsForJenjang) {
       if (!bySchool[s.npsn]) bySchool[s.npsn] = { npsn: s.npsn, nama_sekolah: s.nama_sekolah, subs: [] };
@@ -572,43 +572,44 @@ function Dashboard({ session, onLogout }) {
         const regulerKoreksiTotal = regulerBreakdown.bjKoreksi + regulerBreakdown.pmKoreksi + regulerBreakdown.atlKoreksi;
         const kinerjaKoreksiTotal = kinerjaBreakdown.bjKoreksi + kinerjaBreakdown.pmKoreksi + kinerjaBreakdown.atlKoreksi;
 
-        // Saldo awal & sisa saldo. Kalau sekolah punya saldo awal Januari
-        // di tabel saldo_awal_januari: Januari = angka itu, bulan lain =
-        // saldo akhir bulan sebelumnya yang dirantai dari Januari.
-        // Kalau belum ada, jatuh kembali ke cara lama (baca dari BKU +
-        // SiLPA Kinerja) supaya sekolah tersebut tetap tampil.
+        // Saldo awal & sisa saldo untuk periode `per` (satu bulan, semester,
+        // atau tahunan). Kalau sekolah punya saldo awal Januari di tabel
+        // saldo_awal_januari: saldo awal periode = angka itu ditambah mutasi
+        // semua bulan SEBELUM bulan pertama periode (Januari = angka itu
+        // sendiri). Sisa saldo = saldo awal + mutasi seluruh bulan dalam
+        // periode. Kalau belum ada di database, jatuh kembali ke saldo awal
+        // dari file BKU bulan pertama (+ SiLPA Kinerja pada sisa saldo)
+        // supaya sekolah tersebut tetap tampil.
         const anchor = saldoAwalMap[npsn];
+        const startOrder = Math.min(...[...per.bulanSet].map((b) => BULAN_ORDER[b] || 99));
+        const firstSubs = subs.filter((x) => (BULAN_ORDER[x.bulan] || 99) === startOrder);
+        const mutasiPeriode = subs.reduce((acc, x) => acc + movementOf(x.totals), 0);
         let saldoAwalBank, saldoAwalTunai, sisaSaldoBKU;
         const bulanKosong = [];
-        if (anchor && period?.type === "month") {
-          const nowOrder = BULAN_ORDER[[...period.bulanSet][0]] || 1;
+        if (anchor) {
           const prior = submissions.filter(
-            (x) => x.npsn === npsn && x.tahun === period.tahun && (BULAN_ORDER[x.bulan] || 0) < nowOrder
+            (x) => x.npsn === npsn && x.tahun === per.tahun && (BULAN_ORDER[x.bulan] || 0) < startOrder
           );
-          for (let o = 1; o < nowOrder; o++) {
+          for (let o = 1; o < startOrder; o++) {
             if (!prior.some((x) => BULAN_ORDER[x.bulan] === o)) {
-              bulanKosong.push(Object.keys(BULAN_ORDER).find((b) => BULAN_ORDER[b] === o));
+              bulanKosong.push(Object.keys(BULAN_ORDER).find((bn) => BULAN_ORDER[bn] === o));
             }
           }
           const totalAwal = anchor.arkas + anchor.tunai + prior.reduce((acc, x) => acc + movementOf(x.totals), 0);
-          if (nowOrder === 1) {
+          if (startOrder === 1) {
             saldoAwalBank = anchor.arkas;
             saldoAwalTunai = anchor.tunai;
           } else {
-            // Pecahan tunai bulan berjalan tetap diambil dari BKU; sisanya
+            // Pecahan tunai diambil dari BKU bulan pertama periode; sisanya
             // ke "Saldo di Arkas", sehingga totalnya selalu = hasil rantai.
-            saldoAwalTunai = sum(subs, (t) => t.saldoAwalTunai);
+            saldoAwalTunai = sum(firstSubs, (t) => t.saldoAwalTunai);
             saldoAwalBank = totalAwal - saldoAwalTunai;
           }
-          sisaSaldoBKU = totalAwal + subs.reduce((acc, x) => acc + movementOf(x.totals), 0);
+          sisaSaldoBKU = totalAwal + mutasiPeriode;
         } else {
-          saldoAwalBank = sum(subs, (t) => t.saldoAwalBank);
-          saldoAwalTunai = sum(subs, (t) => t.saldoAwalTunai);
-          // Koreksi tidak muncul sebagai baris sendiri di BKU, jadi
-          // "Jumlah"/saldoAkhir file lebih kecil sebesar koreksi —
-          // ditambahkan kembali di sini. SiLPA Kinerja hanya dipakai pada
-          // jalur lama ini (sekolah tanpa saldo awal Januari di database).
-          sisaSaldoBKU = sum(subs, (t) => t.saldoAkhir) + regulerKoreksiTotal + kinerjaKoreksiTotal + (silpaMap[npsn] || 0);
+          saldoAwalBank = sum(firstSubs, (t) => t.saldoAwalBank);
+          saldoAwalTunai = sum(firstSubs, (t) => t.saldoAwalTunai);
+          sisaSaldoBKU = sum(firstSubs, (t) => t.saldoAwal) + mutasiPeriode + (silpaMap[npsn] || 0);
         }
         return {
           npsn,
@@ -620,132 +621,252 @@ function Dashboard({ session, onLogout }) {
           reguler: regulerBreakdown,
           kinerja: kinerjaBreakdown,
           sisaSaldoBKU,
-          dariDatabase: !!(anchor && period?.type === "month"),
+          dariDatabase: !!anchor,
           bulanKosong,
         };
       })
       .sort((a, b) => (a.nama_sekolah || "").localeCompare(b.nama_sekolah || ""));
   }
 
-  // Official "Rekapan BOSP" export — matches the dinas's own report
-  // layout exactly (merged multi-row headers, Reguler/Kinerja split,
-  // manual Saldo R.Koran + auto Selisih). Only meaningful for a single
-  // month, since Saldo R.Koran is a specific bank-statement snapshot.
-  const exportRekapResmi = () => {
-    if (!period || period.type !== "month") {
-      alert("Pilih periode satu bulan (bukan semester/tahunan) untuk unduhan ini, karena Saldo R.Koran berupa data per tanggal tertentu.");
+  // Lembar Excel Rekapan BOSP Resmi: layout dinas (header bertingkat,
+  // pecahan Reguler/Kinerja, Saldo R.Koran + Selisih). `rkoranOf(npsn)`
+  // mengembalikan Saldo R.Koran yang dipakai lembar ini (atau undefined).
+  const buildRekapWorksheet = (title, recap, rkoranOf) => {
+    const headerRow1 = [title];
+    const headerRow2 = [
+      "No", "Nama Sekolah", "Saldo Awal", "",
+      "Penambahan", "",
+      "BOSP REGULER", "", "", "", "", "", "", "", "", "",
+      "BOSP KINERJA", "", "", "", "", "", "", "", "", "",
+      "Saldo Akhir", "", "",
+    ];
+    const headerRow3 = [
+      "", "", "Saldo di Arkas", "Tunai",
+      "Pendapatan Dana BOSP Reguler", "Pendapatan Dana BOSP Kinerja",
+      "Belanja Barang dan Jasa", "", "",
+      "Belanja Modal Peralatan dan Mesin", "", "",
+      "Belanja Modal Aset Tetap Lainnya", "", "",
+      "Jumlah Belanja BOSP REGULER",
+      "Belanja Barang dan Jasa", "", "",
+      "Belanja Modal Peralatan dan Mesin", "", "",
+      "Belanja Modal Aset Tetap Lainnya", "", "",
+      "Jumlah Belanja BOSP KINERJA",
+      "Sisa Saldo Buku Kas Umum", "Saldo R.Koran", "Selisih",
+    ];
+    const headerRow4 = [
+      "", "", "", "", "", "",
+      "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+      "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+      "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+      "",
+      "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+      "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+      "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
+      "",
+      "", "", "",
+    ];
+
+    const dataRows = recap.map((r, i) => {
+      const rkoran = rkoranOf(r.npsn);
+      return [
+        i + 1,
+        r.nama_sekolah,
+        r.saldoAwalBank,
+        r.saldoAwalTunai,
+        r.pendapatanReguler,
+        r.pendapatanKinerja,
+        r.reguler.bjSebelum, r.reguler.bjKoreksi, r.reguler.bjSesudah,
+        r.reguler.pmSebelum, r.reguler.pmKoreksi, r.reguler.pmSesudah,
+        r.reguler.atlSebelum, r.reguler.atlKoreksi, r.reguler.atlSesudah,
+        r.reguler.jumlah,
+        r.kinerja.bjSebelum, r.kinerja.bjKoreksi, r.kinerja.bjSesudah,
+        r.kinerja.pmSebelum, r.kinerja.pmKoreksi, r.kinerja.pmSesudah,
+        r.kinerja.atlSebelum, r.kinerja.atlKoreksi, r.kinerja.atlSesudah,
+        r.kinerja.jumlah,
+        r.sisaSaldoBKU,
+        rkoran ?? "",
+        rkoran != null ? r.sisaSaldoBKU - rkoran : "",
+      ];
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet([headerRow1, headerRow2, headerRow3, headerRow4, ...dataRows]);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 28 } },
+      { s: { r: 1, c: 0 }, e: { r: 3, c: 0 } },
+      { s: { r: 1, c: 1 }, e: { r: 3, c: 1 } },
+      { s: { r: 1, c: 2 }, e: { r: 1, c: 3 } },
+      { s: { r: 2, c: 2 }, e: { r: 3, c: 2 } },
+      { s: { r: 2, c: 3 }, e: { r: 3, c: 3 } },
+      { s: { r: 1, c: 4 }, e: { r: 1, c: 5 } },
+      { s: { r: 2, c: 4 }, e: { r: 3, c: 4 } },
+      { s: { r: 2, c: 5 }, e: { r: 3, c: 5 } },
+      { s: { r: 1, c: 6 }, e: { r: 1, c: 15 } },
+      { s: { r: 2, c: 6 }, e: { r: 2, c: 8 } },
+      { s: { r: 2, c: 9 }, e: { r: 2, c: 11 } },
+      { s: { r: 2, c: 12 }, e: { r: 2, c: 14 } },
+      { s: { r: 2, c: 15 }, e: { r: 3, c: 15 } },
+      { s: { r: 1, c: 16 }, e: { r: 1, c: 25 } },
+      { s: { r: 2, c: 16 }, e: { r: 2, c: 18 } },
+      { s: { r: 2, c: 19 }, e: { r: 2, c: 21 } },
+      { s: { r: 2, c: 22 }, e: { r: 2, c: 24 } },
+      { s: { r: 2, c: 25 }, e: { r: 3, c: 25 } },
+      { s: { r: 1, c: 26 }, e: { r: 1, c: 28 } },
+      { s: { r: 2, c: 26 }, e: { r: 3, c: 26 } },
+      { s: { r: 2, c: 27 }, e: { r: 3, c: 27 } },
+      { s: { r: 2, c: 28 }, e: { r: 3, c: 28 } },
+    ];
+    return ws;
+  };
+
+  // Susunan lembar unduhan Rekapan BOSP Resmi.
+  //  - Satu bulan: satu lembar per jenjang (seperti sebelumnya).
+  //  - Semester: per jenjang, lembar tiap bulan (yang sudah ada datanya),
+  //    lalu lembar SEMESTER di akhir.
+  //  - Tahunan: per jenjang, lembar tiap bulan, lalu SEMESTER 1, SEMESTER 2,
+  //    dan TAHUNAN di akhir.
+  // Lembar bulan memuat semua sekolah yang submit pada bulan itu. Lembar
+  // semester/tahunan hanya memuat sekolah yang sudah submit SEMUA bulan
+  // dalam rentangnya (aturan yang sama dengan dashboard), supaya total tidak
+  // tampak lengkap padahal belum.
+  const buildRekapSheetPlan = () => {
+    const tahun = period.tahun;
+    const plan = [];
+    const dilewati = [];
+    const tidakLengkap = new Map(); // nama sekolah -> lembar semester/tahunan yang tidak memuatnya
+    const upper = (v) => String(v).toUpperCase();
+    const title = (jenjang, label) => `REKAPAN BOSP JENJANG ${jenjang} SE-KABUPATEN GIANYAR ${upper(label)}`;
+    const lastMonthOf = (per) => [...per.bulanSet].sort((x, y) => BULAN_ORDER[y] - BULAN_ORDER[x])[0];
+
+    if (period.type === "month") {
+      for (const jenjang of JENJANG_VIS) {
+        const subs = completeFiltered.filter((s) => jenjangOf(s) === jenjang);
+        plan.push({
+          jenjang,
+          sheetName: JENJANG_SHEET_NAME[jenjang],
+          title: title(jenjang, periodLabel(activePeriod)),
+          per: period,
+          subs,
+          rkoranBulan: lastMonthOf(period),
+        });
+      }
+      return { plan, dilewati, tidakLengkap };
+    }
+
+    const bulanAda = new Set(submissions.filter((s) => s.tahun === tahun).map((s) => s.bulan));
+    const bulanPeriode = [...period.bulanSet]
+      .filter((b) => bulanAda.has(b))
+      .sort((x, y) => BULAN_ORDER[x] - BULAN_ORDER[y]);
+    const rentang = period.type === "semester" ? [Number(activePeriod.split(":")[2])] : [1, 2];
+
+    for (const jenjang of JENJANG_VIS) {
+      const sName = JENJANG_SHEET_NAME[jenjang];
+      const subsJ = submissions.filter((s) => s.tahun === tahun && jenjangOf(s) === jenjang);
+
+      for (const b of bulanPeriode) {
+        const subs = subsJ.filter((s) => s.bulan === b);
+        if (subs.length === 0) continue;
+        const per = { type: "month", tahun, bulanSet: new Set([b]) };
+        plan.push({ jenjang, sheetName: `${sName} ${b}`, title: title(jenjang, `${b} ${tahun}`), per, subs, rkoranBulan: b });
+      }
+
+      const addRange = (per, sheetName, label) => {
+        const bySchool = {};
+        for (const s of subsJ) {
+          if (!per.bulanSet.has(s.bulan)) continue;
+          (bySchool[s.npsn] ||= { nama: s.nama_sekolah, bulan: new Set() }).bulan.add(s.bulan);
+        }
+        // Jenjang tanpa satu pun submisi dalam rentang ini: lewati diam-diam.
+        if (Object.keys(bySchool).length === 0) return;
+        const lengkap = new Set();
+        for (const [npsn, v] of Object.entries(bySchool)) {
+          if ([...per.bulanSet].every((b) => v.bulan.has(b))) lengkap.add(npsn);
+          else tidakLengkap.set(v.nama, [...(tidakLengkap.get(v.nama) || []), sheetName]);
+        }
+        const subs = subsJ.filter((s) => per.bulanSet.has(s.bulan) && lengkap.has(s.npsn));
+        if (subs.length === 0) {
+          dilewati.push(`${sName} ${sheetName}`);
+          return;
+        }
+        plan.push({ jenjang, sheetName: `${sName} ${sheetName}`, title: title(jenjang, label), per, subs, rkoranBulan: lastMonthOf(per) });
+      };
+
+      for (const n of rentang) {
+        addRange(parsePeriod(`semester:${tahun}:${n}`), `SEMESTER ${n}`, periodLabel(`semester:${tahun}:${n}`));
+      }
+      if (period.type === "year") addRange(parsePeriod(`year:${tahun}`), "TAHUNAN", periodLabel(`year:${tahun}`));
+    }
+    return { plan, dilewati, tidakLengkap };
+  };
+
+  // Official "Rekapan BOSP" export — layout dinas (header bertingkat,
+  // pemisahan Reguler/Kinerja, Saldo R.Koran manual + Selisih otomatis).
+  // Bisa untuk satu bulan, semester, maupun tahunan (lihat susunan lembar
+  // di atas). Saldo R.Koran tiap lembar = R.Koran bulan terakhir lembar itu.
+  const exportRekapResmi = async () => {
+    if (!period) return;
+    const { plan, dilewati, tidakLengkap } = buildRekapSheetPlan();
+    if (plan.length === 0) {
+      alert("Belum ada data untuk periode ini.");
       return;
     }
 
-    // Pemeriksaan sebelum unduh: rantai saldo bergantung pada submission
-    // bulan-bulan sebelumnya. Bulan yang belum di-submit dianggap tanpa
+    // Saldo R.Koran: satu bulan memakai data yang sudah dimuat; semester/
+    // tahunan mengambil semua bulan sekaligus.
+    let rkoranByBulan = {};
+    if (period.type === "month") {
+      rkoranByBulan[[...period.bulanSet][0]] = rkoranMap;
+    } else {
+      try {
+        const res = await fetch(`/api/admin/rkoran?tahun=${period.tahun}`, { headers: authHeaders });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "gagal");
+        for (const e of data.entries || []) {
+          (rkoranByBulan[e.bulan] ||= {})[e.npsn] = e.saldo_rkoran;
+        }
+      } catch {
+        alert("Gagal mengambil data Saldo R.Koran. Coba lagi.");
+        return;
+      }
+    }
+
+    // Pemeriksaan sebelum unduh. Rantai saldo bergantung pada submission
+    // bulan-bulan sebelumnya; bulan yang belum di-submit dianggap tanpa
     // mutasi, jadi angkanya bisa meleset — beri tahu dulu.
-    const allRecap = JENJANG_VIS.flatMap((j) => buildOfficialRecap(completeFiltered.filter((s) => jenjangOf(s) === j)));
-    const berlubang = allRecap.filter((r) => r.bulanKosong.length > 0);
-    const tanpaAnchor = allRecap.filter((r) => !r.dariDatabase);
+    const recaps = plan.map((p) => ({ ...p, recap: buildOfficialRecap(p.subs, p.per) }));
+    const berlubang = new Map();
+    const tanpaAnchor = new Set();
+    for (const { recap } of recaps) {
+      for (const r of recap) {
+        if (r.bulanKosong.length > 0) berlubang.set(r.nama_sekolah, r.bulanKosong);
+        if (!r.dariDatabase) tanpaAnchor.add(r.nama_sekolah);
+      }
+    }
     const pesan = [];
-    if (berlubang.length > 0) {
+    if (berlubang.size > 0) {
+      const [nama, bulan] = [...berlubang.entries()][0];
       pesan.push(
-        `${berlubang.length} sekolah belum submit sebagian bulan sebelumnya (mis. ${berlubang[0].nama_sekolah}: ${berlubang[0].bulanKosong.join(", ")}). Bulan itu dianggap tanpa transaksi sehingga Saldo Awal/Sisa Saldo bisa tidak akurat.`
+        `${berlubang.size} sekolah belum submit sebagian bulan sebelumnya (mis. ${nama}: ${bulan.join(", ")}). Bulan itu dianggap tanpa transaksi sehingga Saldo Awal/Sisa Saldo bisa tidak akurat.`
       );
     }
-    if (tanpaAnchor.length > 0) {
+    if (tanpaAnchor.size > 0) {
+      pesan.push(`${tanpaAnchor.size} sekolah belum punya Saldo Awal Januari di database, jadi memakai saldo dari file BKU (cara lama).`);
+    }
+    if (tidakLengkap.size > 0) {
+      const [nama, lembar] = [...tidakLengkap.entries()][0];
       pesan.push(
-        `${tanpaAnchor.length} sekolah belum punya Saldo Awal Januari di database, jadi memakai saldo dari file BKU (cara lama).`
+        `${tidakLengkap.size} sekolah belum submit semua bulan untuk sebagian lembar semester/tahunan, sehingga tidak dimuat di lembar itu (mis. ${nama}: ${[...new Set(lembar)].join(", ")}). Sekolah tersebut tetap ada di lembar bulan yang sudah disubmit.`
       );
+    }
+    if (dilewati.length > 0) {
+      pesan.push(`Lembar ${dilewati.join(", ")} tidak dibuat karena belum ada sekolah yang lengkap submit semua bulannya.`);
     }
     if (pesan.length > 0 && !confirm(pesan.join("\n\n") + "\n\nLanjut unduh?")) return;
 
     const wb = XLSX.utils.book_new();
-    for (const jenjang of JENJANG_VIS) {
-      const subsForJenjang = completeFiltered.filter((s) => jenjangOf(s) === jenjang);
-      const recap = buildOfficialRecap(subsForJenjang);
-
-      const title = `REKAPAN BOSP JENJANG ${jenjang === "TK/PAUD" ? "TK/PAUD" : jenjang} SE-KABUPATEN GIANYAR ${periodLabel(activePeriod).toUpperCase()}`;
-      const headerRow1 = [title];
-      const headerRow2 = [
-        "No", "Nama Sekolah", "Saldo Awal", "",
-        "Penambahan", "",
-        "BOSP REGULER", "", "", "", "", "", "", "", "", "",
-        "BOSP KINERJA", "", "", "", "", "", "", "", "", "",
-        "Saldo Akhir", "", "",
-      ];
-      const headerRow3 = [
-        "", "", "Saldo di Arkas", "Tunai",
-        "Pendapatan Dana BOSP Reguler", "Pendapatan Dana BOSP Kinerja",
-        "Belanja Barang dan Jasa", "", "",
-        "Belanja Modal Peralatan dan Mesin", "", "",
-        "Belanja Modal Aset Tetap Lainnya", "", "",
-        "Jumlah Belanja BOSP REGULER",
-        "Belanja Barang dan Jasa", "", "",
-        "Belanja Modal Peralatan dan Mesin", "", "",
-        "Belanja Modal Aset Tetap Lainnya", "", "",
-        "Jumlah Belanja BOSP KINERJA",
-        "Sisa Saldo Buku Kas Umum", "Saldo R.Koran", "Selisih",
-      ];
-      const headerRow4 = [
-        "", "", "", "", "", "",
-        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
-        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
-        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
-        "",
-        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
-        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
-        "Sebelum Koreksi", "Koreksi", "Sesudah Koreksi",
-        "",
-        "", "", "",
-      ];
-
-      const dataRows = recap.map((r, i) => {
-        const rkoran = rkoranMap[r.npsn];
-        return [
-          i + 1,
-          r.nama_sekolah,
-          r.saldoAwalBank,
-          r.saldoAwalTunai,
-          r.pendapatanReguler,
-          r.pendapatanKinerja,
-          r.reguler.bjSebelum, r.reguler.bjKoreksi, r.reguler.bjSesudah,
-          r.reguler.pmSebelum, r.reguler.pmKoreksi, r.reguler.pmSesudah,
-          r.reguler.atlSebelum, r.reguler.atlKoreksi, r.reguler.atlSesudah,
-          r.reguler.jumlah,
-          r.kinerja.bjSebelum, r.kinerja.bjKoreksi, r.kinerja.bjSesudah,
-          r.kinerja.pmSebelum, r.kinerja.pmKoreksi, r.kinerja.pmSesudah,
-          r.kinerja.atlSebelum, r.kinerja.atlKoreksi, r.kinerja.atlSesudah,
-          r.kinerja.jumlah,
-          r.sisaSaldoBKU,
-          rkoran ?? "",
-          rkoran != null ? r.sisaSaldoBKU - rkoran : "",
-        ];
-      });
-
-      const ws = XLSX.utils.aoa_to_sheet([headerRow1, headerRow2, headerRow3, headerRow4, ...dataRows]);
-      ws["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 28 } },
-        { s: { r: 1, c: 0 }, e: { r: 3, c: 0 } },
-        { s: { r: 1, c: 1 }, e: { r: 3, c: 1 } },
-        { s: { r: 1, c: 2 }, e: { r: 1, c: 3 } },
-        { s: { r: 2, c: 2 }, e: { r: 3, c: 2 } },
-        { s: { r: 2, c: 3 }, e: { r: 3, c: 3 } },
-        { s: { r: 1, c: 4 }, e: { r: 1, c: 5 } },
-        { s: { r: 2, c: 4 }, e: { r: 3, c: 4 } },
-        { s: { r: 2, c: 5 }, e: { r: 3, c: 5 } },
-        { s: { r: 1, c: 6 }, e: { r: 1, c: 15 } },
-        { s: { r: 2, c: 6 }, e: { r: 2, c: 8 } },
-        { s: { r: 2, c: 9 }, e: { r: 2, c: 11 } },
-        { s: { r: 2, c: 12 }, e: { r: 2, c: 14 } },
-        { s: { r: 2, c: 15 }, e: { r: 3, c: 15 } },
-        { s: { r: 1, c: 16 }, e: { r: 1, c: 25 } },
-        { s: { r: 2, c: 16 }, e: { r: 2, c: 18 } },
-        { s: { r: 2, c: 19 }, e: { r: 2, c: 21 } },
-        { s: { r: 2, c: 22 }, e: { r: 2, c: 24 } },
-        { s: { r: 2, c: 25 }, e: { r: 3, c: 25 } },
-        { s: { r: 1, c: 26 }, e: { r: 1, c: 28 } },
-        { s: { r: 2, c: 26 }, e: { r: 3, c: 26 } },
-        { s: { r: 2, c: 27 }, e: { r: 3, c: 27 } },
-        { s: { r: 2, c: 28 }, e: { r: 3, c: 28 } },
-      ];
-      XLSX.utils.book_append_sheet(wb, ws, JENJANG_SHEET_NAME[jenjang]);
+    for (const { sheetName, title, recap, rkoranBulan } of recaps) {
+      const rkoranMapBulan = rkoranByBulan[rkoranBulan] || {};
+      const ws = buildRekapWorksheet(title, recap, (npsn) => rkoranMapBulan[npsn]);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
     }
     XLSX.writeFile(wb, `Rekapan-BOSP-Resmi-${periodFileTag()}.xlsx`);
   };
@@ -896,9 +1017,9 @@ function Dashboard({ session, onLogout }) {
           </button>
           <button
             onClick={exportRekapResmi}
-            disabled={completeFiltered.length === 0}
+            disabled={rawFiltered.length === 0}
             className="text-xs text-white bg-blue rounded-xl px-3 py-2 font-semibold disabled:opacity-40"
-            title="Hanya untuk periode satu bulan"
+            title="Satu bulan: satu lembar per jenjang. Semester/tahunan: lembar per bulan, lalu lembar semester/tahunan di akhir."
           >
             ⬇ Rekapan BOSP Resmi
           </button>

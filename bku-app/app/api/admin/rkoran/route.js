@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin, authenticateAdmin, npsnSetForJenjang, UNAUTHORIZED } from "../../../../lib/supabaseAdmin";
 
-// GET /api/admin/rkoran?tahun=2026&bulan=MARET
+// GET /api/admin/rkoran?tahun=2026&bulan=MARET   -> satu bulan
+// GET /api/admin/rkoran?tahun=2026                -> semua bulan (dipakai
+//   unduhan Rekapan BOSP Resmi semester/tahunan; tiap entri memuat bulan)
 export async function GET(req) {
   const admin = await authenticateAdmin(req);
   if (!admin) return NextResponse.json(UNAUTHORIZED, { status: 401 });
@@ -9,14 +11,12 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const tahun = searchParams.get("tahun");
   const bulan = searchParams.get("bulan");
-  if (!tahun || !bulan) return NextResponse.json({ error: "tahun dan bulan wajib diisi." }, { status: 400 });
+  if (!tahun) return NextResponse.json({ error: "tahun wajib diisi." }, { status: 400 });
 
   const supabase = supabaseAdmin();
-  const { data, error } = await supabase
-    .from("saldo_rkoran")
-    .select("npsn, saldo_rkoran")
-    .eq("tahun", tahun)
-    .eq("bulan", bulan);
+  let q = supabase.from("saldo_rkoran").select("npsn, bulan, saldo_rkoran").eq("tahun", tahun);
+  if (bulan) q = q.eq("bulan", bulan);
+  const { data, error } = await q;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!admin.jenjang) return NextResponse.json({ entries: data });
