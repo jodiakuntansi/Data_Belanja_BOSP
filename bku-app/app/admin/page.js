@@ -146,6 +146,7 @@ function fmtRp(n) {
 }
 
 function PasswordGate({ onOk }) {
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -158,12 +159,20 @@ function PasswordGate({ onOk }) {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
-      if (!res.ok) setError("Password salah.");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setError(data.error || "Username atau password salah.");
       else {
-        sessionStorage.setItem("bku_admin_pw", password);
-        onOk(password);
+        // Admin utama (tanpa username) menyimpan user kosong.
+        const session = {
+          user: username.trim().toLowerCase() === "admin" ? "" : username.trim().toLowerCase(),
+          password,
+          nama: data.nama || "Admin",
+          jenjang: data.jenjang || null,
+        };
+        sessionStorage.setItem("bku_admin_session", JSON.stringify(session));
+        onOk(session);
       }
     } catch {
       setError("Gagal menghubungi server.");
@@ -179,13 +188,23 @@ function PasswordGate({ onOk }) {
             <Landmark size={20} className="text-white" />
           </div>
           <h1 className="font-extrabold text-lg text-white">Rekap dinas</h1>
-          <p className="text-xs text-white/75 mt-1">Masukkan password dinas untuk melihat rekap.</p>
+          <p className="text-xs text-white/75 mt-1">Masuk dengan akun admin dinas untuk melihat rekap.</p>
         </div>
         <form onSubmit={submit} className="p-6">
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
+          autoCapitalize="none"
+          className="w-full mb-3 border border-border rounded-xl px-3 py-2.5 text-sm bg-white border-border focus:border-blue outline-none transition"
+          placeholder="Username (kosongkan untuk admin utama)"
+        />
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
           className="w-full mb-4 border border-border rounded-xl px-3 py-2.5 text-sm bg-white border-border focus:border-blue outline-none transition"
           placeholder="Password"
           required
@@ -201,7 +220,13 @@ function PasswordGate({ onOk }) {
   );
 }
 
-function Dashboard({ password, onLogout }) {
+function Dashboard({ session, onLogout }) {
+  const password = session.password;
+  // Admin per jenjang (mis. "SD") hanya menerima & melihat jenjangnya;
+  // null = admin semua jenjang. Pembatasan sebenarnya dijaga di server.
+  const adminJenjang = session.jenjang || null;
+  const JENJANG_VIS = adminJenjang ? [adminJenjang] : JENJANG_ORDER;
+  const authHeaders = { "x-admin-password": password, "x-admin-user": session.user || "" };
   const [loading, setLoading] = useState(true);
   const [submissions, setSubmissions] = useState([]);
   const [roster, setRoster] = useState([]);
@@ -224,7 +249,7 @@ function Dashboard({ password, onLogout }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const headers = { "x-admin-password": password };
+    const headers = authHeaders;
     try {
       const [subRes, rosterRes] = await Promise.all([
         fetch("/api/admin/data", { headers }).then((r) => r.json()),
@@ -266,7 +291,7 @@ function Dashboard({ password, onLogout }) {
     }
     try {
       const res = await fetch(`/api/admin/rkoran?tahun=${period.tahun}&bulan=${[...period.bulanSet][0]}`, {
-        headers: { "x-admin-password": password },
+        headers: authHeaders,
       });
       const data = await res.json();
       const map = {};
@@ -291,7 +316,7 @@ function Dashboard({ password, onLogout }) {
     }
     try {
       const res = await fetch(`/api/admin/silpa?tahun=${period.tahun}`, {
-        headers: { "x-admin-password": password },
+        headers: authHeaders,
       });
       const data = await res.json();
       const map = {};
@@ -315,7 +340,7 @@ function Dashboard({ password, onLogout }) {
     }
     try {
       const res = await fetch(`/api/admin/saldoawal?tahun=${period.tahun}`, {
-        headers: { "x-admin-password": password },
+        headers: authHeaders,
       });
       const data = await res.json();
       const map = {};
@@ -348,7 +373,7 @@ function Dashboard({ password, onLogout }) {
     try {
       const res = await fetch("/api/admin/rkoran", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ tahun: period.tahun, bulan: [...period.bulanSet][0], entries }),
       });
       const data = await res.json();
@@ -400,7 +425,7 @@ function Dashboard({ password, onLogout }) {
   const belum = roster.filter((r) => !submittedNpsns.has(r.npsn));
 
   const jenjangOf = (s) => (JENJANG_ORDER.includes(s.jenjang) ? s.jenjang : "Lainnya");
-  const jenjangGroups = JENJANG_ORDER.concat(filtered.some((s) => !JENJANG_ORDER.includes(s.jenjang)) ? ["Lainnya"] : []).map((jenjang) => {
+  const jenjangGroups = JENJANG_VIS.concat(!adminJenjang && filtered.some((s) => !JENJANG_ORDER.includes(s.jenjang)) ? ["Lainnya"] : []).map((jenjang) => {
     const schools = filtered.filter((s) => jenjangOf(s) === jenjang);
     return {
       jenjang,
@@ -615,7 +640,7 @@ function Dashboard({ password, onLogout }) {
     // Pemeriksaan sebelum unduh: rantai saldo bergantung pada submission
     // bulan-bulan sebelumnya. Bulan yang belum di-submit dianggap tanpa
     // mutasi, jadi angkanya bisa meleset — beri tahu dulu.
-    const allRecap = JENJANG_ORDER.flatMap((j) => buildOfficialRecap(completeFiltered.filter((s) => jenjangOf(s) === j)));
+    const allRecap = JENJANG_VIS.flatMap((j) => buildOfficialRecap(completeFiltered.filter((s) => jenjangOf(s) === j)));
     const berlubang = allRecap.filter((r) => r.bulanKosong.length > 0);
     const tanpaAnchor = allRecap.filter((r) => !r.dariDatabase);
     const pesan = [];
@@ -632,7 +657,7 @@ function Dashboard({ password, onLogout }) {
     if (pesan.length > 0 && !confirm(pesan.join("\n\n") + "\n\nLanjut unduh?")) return;
 
     const wb = XLSX.utils.book_new();
-    for (const jenjang of JENJANG_ORDER) {
+    for (const jenjang of JENJANG_VIS) {
       const subsForJenjang = completeFiltered.filter((s) => jenjangOf(s) === jenjang);
       const recap = buildOfficialRecap(subsForJenjang);
 
@@ -728,7 +753,7 @@ function Dashboard({ password, onLogout }) {
   // File 1: total belanja modal & barang/jasa per sekolah, satu sheet per jenjang.
   const exportRekapTotal = () => {
     const wb = XLSX.utils.book_new();
-    for (const jenjang of JENJANG_ORDER) {
+    for (const jenjang of JENJANG_VIS) {
       const jg = jenjangGroups.find((j) => j.jenjang === jenjang);
       const rows = [
         ["Nama Sekolah", "NPSN", "Bulan", "Saldo Awal", "Pendapatan", "Belanja Modal - Peralatan & Mesin", "Belanja Modal - Aset Tetap Lainnya", "Belanja Barang & Jasa", "Belanja Total", "Saldo Akhir"],
@@ -755,7 +780,7 @@ function Dashboard({ password, onLogout }) {
   // File 2: rincian per kode rekening, dipisah per sekolah untuk semua jenjang.
   const exportRincianKode = () => {
     const wb = XLSX.utils.book_new();
-    for (const jenjang of JENJANG_ORDER) {
+    for (const jenjang of JENJANG_VIS) {
       const jg = jenjangGroups.find((j) => j.jenjang === jenjang);
       const schools = jg ? jg.schools : [];
       const rows = [["Nama Sekolah", "Kode Rekening", "Kategori", "Uraian Rekening", "Total"]];
@@ -772,7 +797,7 @@ function Dashboard({ password, onLogout }) {
   // File 3: status sudah/belum submit, satu sheet per jenjang.
   const exportStatusSubmit = () => {
     const wb = XLSX.utils.book_new();
-    for (const jenjang of JENJANG_ORDER) {
+    for (const jenjang of JENJANG_VIS) {
       const jg = jenjangGroups.find((j) => j.jenjang === jenjang);
       const sudah = jg ? jg.schools.map((s) => ({ npsn: s.npsn, nama: s.nama_sekolah, status: "Sudah" })) : [];
       const belumList = jg ? jg.belum.map((s) => ({ npsn: s.npsn, nama: s.nama, status: "Belum" })) : [];
@@ -800,7 +825,7 @@ function Dashboard({ password, onLogout }) {
     try {
       const res = await fetch("/api/admin/roster", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ schools: parsed }),
       });
       const data = await res.json();
@@ -822,7 +847,7 @@ function Dashboard({ password, onLogout }) {
         <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
           <div>
             <h1 className="font-extrabold text-xl text-ink">Rekap dinas</h1>
-            <p className="text-xs text-inksoft">SIMBOSP — TK/PAUD, SD, SMP</p>
+            <p className="text-xs text-inksoft">SIMBOSP — {adminJenjang ? `Jenjang ${adminJenjang}` : "TK/PAUD, SD, SMP"} · {session.nama}</p>
           </div>
           <button onClick={onLogout} className="text-xs text-inksoft border border-border rounded-xl px-3 py-1.5">Keluar</button>
         </div>
@@ -1237,20 +1262,29 @@ function Dashboard({ password, onLogout }) {
 }
 
 export default function AdminPage() {
-  const [password, setPassword] = useState(null);
+  const [session, setSession] = useState(null);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem("bku_admin_pw");
-    if (saved) setPassword(saved);
+    try {
+      const saved = sessionStorage.getItem("bku_admin_session");
+      if (saved) {
+        setSession(JSON.parse(saved));
+        return;
+      }
+      // Sesi lama (sebelum ada akun per jenjang): hanya password admin utama.
+      const old = sessionStorage.getItem("bku_admin_pw");
+      if (old) setSession({ user: "", password: old, nama: "Admin utama", jenjang: null });
+    } catch {}
   }, []);
 
-  if (!password) return <PasswordGate onOk={setPassword} />;
+  if (!session) return <PasswordGate onOk={setSession} />;
   return (
     <Dashboard
-      password={password}
+      session={session}
       onLogout={() => {
+        sessionStorage.removeItem("bku_admin_session");
         sessionStorage.removeItem("bku_admin_pw");
-        setPassword(null);
+        setSession(null);
       }}
     />
   );

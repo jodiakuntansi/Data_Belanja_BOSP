@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin, checkAdminPassword } from "../../../../lib/supabaseAdmin";
+import { supabaseAdmin, authenticateAdmin, UNAUTHORIZED } from "../../../../lib/supabaseAdmin";
 
 // Supabase/PostgREST membatasi satu permintaan maksimal 1.000 baris.
 // Karena submissions sudah jauh lebih banyak dari itu (sekitar 240
@@ -9,21 +9,23 @@ import { supabaseAdmin, checkAdminPassword } from "../../../../lib/supabaseAdmin
 const PAGE_SIZE = 1000;
 
 export async function GET(req) {
-  if (!checkAdminPassword(req)) {
-    return NextResponse.json({ error: "Tidak diizinkan." }, { status: 401 });
-  }
+  const admin = await authenticateAdmin(req);
+  if (!admin) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
   const supabase = supabaseAdmin();
   const all = [];
   for (let from = 0; ; from += PAGE_SIZE) {
+    let q = supabase.from("submissions").select("*");
+    // Admin per jenjang hanya menerima data jenjangnya sendiri.
+    if (admin.jenjang) q = q.eq("jenjang", admin.jenjang);
     // Urutan tambahan (id) wajib supaya halaman tidak tumpang tindih
     // saat beberapa baris punya submitted_at yang sama.
-    const { data, error } = await supabase
-      .from("submissions")
-      .select("*")
+    q = q
       .order("submitted_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
 
+    const { data, error } = await q;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     all.push(...data);
     if (data.length < PAGE_SIZE) break;

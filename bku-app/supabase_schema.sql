@@ -94,3 +94,40 @@ alter table submissions enable row level security;
 alter table saldo_rkoran enable row level security;
 alter table silpa_kinerja enable row level security;
 alter table saldo_awal_januari enable row level security;
+
+-- ============================================================
+-- Akun admin dinas (banyak akun, bisa dibatasi per jenjang)
+-- ============================================================
+-- jenjang diisi 'TK/PAUD', 'SD', atau 'SMP' => admin hanya melihat &
+-- mengelola sekolah jenjang itu. jenjang dikosongkan (null) => admin
+-- semua jenjang. Admin utama lama (password dari ADMIN_PASSWORD di
+-- Vercel) tetap berfungsi tanpa baris di tabel ini.
+-- Password disimpan sebagai hash (bcrypt), bukan teks biasa.
+create extension if not exists pgcrypto with schema extensions;
+
+create table if not exists admin_users (
+  username text primary key,
+  password_hash text not null,
+  jenjang text check (jenjang in ('TK/PAUD', 'SD', 'SMP')),
+  nama text,
+  aktif boolean not null default true,
+  created_at timestamptz not null default now()
+);
+alter table admin_users enable row level security;
+
+-- Dipanggil server saat login. Mengembalikan 1 baris jika username &
+-- password cocok dan akun aktif, selain itu kosong.
+create or replace function admin_login(p_username text, p_password text)
+returns table (username text, jenjang text, nama text)
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select u.username, u.jenjang, u.nama
+  from admin_users u
+  where u.username = lower(btrim(p_username))
+    and u.aktif
+    and u.password_hash = extensions.crypt(p_password, u.password_hash);
+$$;
+revoke all on function admin_login(text, text) from public, anon, authenticated;
+grant execute on function admin_login(text, text) to service_role;
